@@ -46,8 +46,8 @@ def ftZ(g,faults=1,robust=False,all_sets=False):
                 if ftz==-1 or len(S[j])==ftz:
                     ftz=len(S[j])
                     ftz_sets.append(S[j])
-                    print(S[j],"is fault tolerant")     
-                    print(ftz_sets)                      
+                    #print(S[j],"is fault tolerant")     
+                    #print(ftz_sets)                      
     if all_sets==True:
         return ftz_sets        
     else:    
