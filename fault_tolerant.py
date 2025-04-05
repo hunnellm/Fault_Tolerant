@@ -49,6 +49,41 @@ def ftZ(g,faults=1,robust=False,all_sets=False):
                     #print(S[j],"is fault tolerant")     
                     #print(ftz_sets)                      
     if all_sets==True:
-        return ftz_sets        
+        return ftz_sets
+
+def psdgame(g,B=[]):
+	again=1
+	filled_vertices=set(B)
+	vertices_to_add=set()
+	while again==1:
+		again=0
+		h=deepcopy(g)
+		filled_vertices=filled_vertices.union(vertices_to_add)
+		for b in filled_vertices:
+			h.delete_vertex(b)
+		hh=h.connected_components_subgraphs()
+		for b in filled_vertices:
+			for i in range(len(hh)):
+				comp_vert=[]
+				j=hh[i]
+				comp_vert=[x for x in g.neighbors(b) if x in j.vertices() ]
+				if len(comp_vert)==1:
+					vertices_to_add.add(comp_vert[0])
+					again=1
+	return(filled_vertices)
+
+def Zplus(g):
+	#returns PSD forcing number of graph g
+	size=1
+	order=len(g.vertices())
+	N=set(g.vertices())
+	again=1
+	while again==1:
+		again=0
+		for sub_s in Subsets(N,size):
+			if len(psdgame(g,sub_s))==order:
+				return size
+		size+=1
+		again=1    
     else:    
         return ftz
