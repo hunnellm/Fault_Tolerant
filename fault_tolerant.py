@@ -13,7 +13,7 @@ def ft_set(g,s, faults =1):
 	# faults the number of faults required
     Z=find_Z(g)
     if Z+faults>g.order():
-        return -1
+        return False
     all_checks=True
     sub_s_count=0
     if len(zerosgame(g,s))==g.order():
