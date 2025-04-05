@@ -7,7 +7,10 @@ Created on Fri Sep 15 21:33:17 2023
 """
 
 def ft_set(g,s, faults =1):
-    
+	# returns whether a set is a fault tolerant zero forcing set for a graph
+    	# g a graph
+	# s the set to test
+	# faults the number of faults required
     Z=find_Z(g)
     if Z+faults>g.order():
         return -1
@@ -32,6 +35,11 @@ def ft_set(g,s, faults =1):
     return False
 
 def ftZ(g,faults=1,robust=False,all_sets=False):
+	#computes the fault tolerant zero forcing number
+	#g a graph
+	#faults the number of faults required
+	#robust allows overfilling vertices, not implemented
+	#all_sets=True returns all fault tolerant sets of minimum size
     ftz=-1
     Z=find_Z(g)
     ftz_sets=[]
@@ -46,12 +54,13 @@ def ftZ(g,faults=1,robust=False,all_sets=False):
                 if ftz==-1 or len(S[j])==ftz:
                     ftz=len(S[j])
                     ftz_sets.append(S[j])
-                    #print(S[j],"is fault tolerant")     
-                    #print(ftz_sets)                      
     if all_sets==True:
         return ftz_sets
 
 def psdgame(g,B=[]):
+	#returns the set of vertices colored by the psd color change tule
+	#g a graph
+	#B the initially blue vertices
 	again=1
 	filled_vertices=set(B)
 	vertices_to_add=set()
