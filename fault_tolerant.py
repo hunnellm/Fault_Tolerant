@@ -6,6 +6,43 @@ Created on Fri Sep 15 21:33:17 2023
 @author: mark
 """
 
+def gzerosgame(g,F=[],B=[]):
+    """
+    Return the derived set for a given graph g with set of banned edges B and a initial set of vertices. The derived set is given by doing generalized zero forcing process. That is, if y is the only white neighbor of x and xy is not banned, then x could force y into black.
+
+    Input:
+        g: a simple graph
+        F: a list of vertices of g
+        B: a list of tuples representing banned edges of g
+
+    Output:
+        A set of black vertices when zero forcing process stops.
+
+    Examples:
+        sage: gzerosgame(graphs.PathGraph(5),[0])
+        set([0, 1, 2, 3, 4])
+        sage: gzerosgame(graphs.PathGraph(5),[0],[(1,2)])
+        set([0, 1])
+    """
+    S=set(F) # suspicuous vertices
+    Black_vertices=set(F) # current black vertices
+    again=1 # iterate again or not
+    while again==1:
+        again=0
+        for x in S:
+            N=set(g.neighbors(x))
+            D=N.difference(Black_vertices) # set of white neighbors
+            if len(D)==1:
+                for v in D:
+                    y=v # the only white neighbor
+                if (((x,y) in B)==False) and (((y,x) in B)==False):
+                    again=1
+                    S.remove(x)
+                    S.add(y)
+                    Black_vertices.add(y)
+                    break
+    return(Black_vertices)
+
 def ft_set(g,s, faults =1):
 	# returns whether a set is a fault tolerant zero forcing set for a graph
     	# g a graph
