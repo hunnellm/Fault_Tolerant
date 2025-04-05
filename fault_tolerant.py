@@ -56,6 +56,8 @@ def ftZ(g,faults=1,robust=False,all_sets=False):
                     ftz_sets.append(S[j])
     if all_sets==True:
         return ftz_sets
+    else:    
+        return ftz	    
 
 def psdgame(g,B=[]):
 	#returns the set of vertices colored by the psd color change tule
@@ -94,5 +96,4 @@ def Zplus(g):
 				return size
 		size+=1
 		again=1    
-    else:    
-        return ftz
+
