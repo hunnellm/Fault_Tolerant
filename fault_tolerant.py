@@ -262,3 +262,45 @@ def twin(v,g):
         h.add_edge(w,u)
     h.relabel(range(len(g.vertices()))) 
     return h
+
+def is_minimal_zf_set(g,S):
+    if len(zerosgame(g,S))<len(S):
+        return False
+    for s in Subsets(S,len(S)-1):
+        if len(zerosgame(g,s))==g.order():
+            return False
+    return True        
+        
+
+def minimal_zf_sets(g):
+    n=g.order()
+    Z=find_Z(g)
+    V=g.vertices()
+    minzfsets=[]
+    for i in range(Z,n):
+        for subset in Subsets(V,i):
+            if len(zerosgame(g,subset))==n and is_minimal_zf_set(g,subset):
+                if s not in minzfsets:
+                    minzfsets.append(subset)
+    return minzfsets 
+
+def minimum_zf_sets(g):
+    n=g.order()
+    Z=find_Z(g)
+    V=g.vertices()
+    minzfsets=[]
+    
+    for subset in Subsets(V,Z):
+        if len(zerosgame(g,subset))==n and is_minimal_zf_set(g,subset):
+            if s not in minzfsets:
+                minzfsets.append(subset)
+    return minzfsets
+
+def has_minimum_zf_set(g,S):
+    newS=Set(S)
+    zfsets=minimum_zf_sets(g)
+    for s1 in zfsets:
+        #print(type(s1))
+        if Set(s1).issubset(newS):
+            return True
+    return False
