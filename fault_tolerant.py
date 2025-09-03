@@ -292,7 +292,7 @@ def minimum_zf_sets(g):
     
     for subset in Subsets(V,Z):
         if len(zerosgame(g,subset))==n and is_minimal_zf_set(g,subset):
-            if s not in minzfsets:
+            if subset not in minzfsets:
                 minzfsets.append(subset)
     return minzfsets
 
