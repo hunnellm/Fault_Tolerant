@@ -251,3 +251,14 @@ def pt(G,S):
         T = new_T
     if len(T)==G.order():
         return prop_time
+
+def twin(v,g):
+    
+    h=g.copy()
+    nbrs=g.neighbors(v)
+    w=g.order()
+    h.add_vertex(w)
+    for u in nbrs:
+        h.add_edge(w,u)
+    h.relabel(range(len(g.vertices()))) 
+    return h
