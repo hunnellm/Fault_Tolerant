@@ -304,3 +304,370 @@ def has_minimum_zf_set(g,S):
         if Set(s1).issubset(newS):
             return True
     return False
+# F-3 Function for propagation time of set S, pt(G,S)
+# adapted by Leslie Hogben from Steve Butler's skew propagation time code (F-10)
+# input: a graph G and a set S of vertices
+# output: pt(G,S) = prop time of S in G (if -1 is returned then S is not a zero forcing set)
+def ptz(G,S):
+    V=set(G.vertices())
+    count = 0
+    done = False
+    active = set(S)
+    filled = set(S)
+    for v in V:
+        N=set(G.neighbors(v))
+        if v in active and N.issubset(filled):
+            active.remove(v)
+        if (v in filled) and (v not in active) and (len(N.intersection(filled)) == G.degree(v)-1):
+            active.add(v)   
+    while not done:
+        done = True
+        new_active = copy(active)
+        new_filled = copy(filled)
+        for v in active:
+            N=set(G.neighbors(v))
+            if len(N.intersection(filled)) == G.degree(v)-1:
+                if done:
+                    done = False
+                    count += 1
+                N.symmetric_difference_update(N.intersection(filled))
+                u=N.pop()
+                new_active.remove(v)
+                new_active.add(u)
+                new_filled.add(u)
+        active = copy(new_active)
+        filled = copy(new_filled)
+        # print filled
+        for v in V:
+            N=set(G.neighbors(v))
+            if v in active and N.issubset(filled):
+                active.remove(v)
+            if (v in filled) and (v not in active) and (len(N.intersection(filled)) == G.degree(v)-1):
+                active.add(v)
+    if len(filled)==len(V):
+        return count
+    return -1
+
+# F-4 Functions for standard propagation time 
+# ptk(G,k) = min prop time over zero forcing sets of G of size k
+# adapted by Leslie Hogben from Steve Butler's skew propagation time code (F-10)
+# this is the function used to compute propation time of G and also throttling
+# input: a graph G and a positive integer k >= Z(G)
+# output: pt(G,k) = min prop time over zero forcing sets G of size k (if order+1 is returned then k<Z(G))
+def ptk(G,k):
+    V=set(G.vertices())
+    sets = subsets(V,k)
+    pt=len(V)+1
+    for S in sets:
+        count = 0
+        done = False
+        active = set(S)
+        filled = set(S)
+        for v in V:
+            N=set(G.neighbors(v))
+            if v in active and N.issubset(filled):
+                active.remove(v)
+            if (v in filled) and (v not in active) and (len(N.intersection(filled)) == G.degree(v)-1):
+                active.add(v)   
+        while not done:
+            done = True
+            new_active = copy(active)
+            new_filled = copy(filled)
+            for v in active:
+                N=set(G.neighbors(v))
+                if len(N.intersection(filled)) == G.degree(v)-1:
+                    if done:
+                        done = False
+                        count += 1
+                    N.symmetric_difference_update(N.intersection(filled))
+                    u=N.pop()
+                    new_active.remove(v)
+                    new_active.add(u)
+                    new_filled.add(u)
+            active = copy(new_active)
+            filled = copy(new_filled)
+            # print filled
+            for v in V:
+                N=set(G.neighbors(v))
+                if v in active and N.issubset(filled):
+                    active.remove(v)
+                if (v in filled) and (v not in active) and (len(N.intersection(filled)) == G.degree(v)-1):
+                    active.add(v)
+        if len(filled)==len(V):
+            if count < pt:
+                pt=count
+    return pt
+# propagation time pt(G)
+# input: a graph G
+# output: propagation time pt(G)=pt(G,Z(G))
+def pt(g):
+    ptg=ptk(g,Z(g))
+    return ptg
+
+# F-5 Functions for standard throttling number
+#
+# These functions compute th(G) by minimizing th(G,k)
+#
+# input: a graph G
+# output: standard throttling number th(G) 
+def th(g):
+    z=Z(g)
+    t=ptk(g,z)
+    thz=z+t
+    kmax=min(z+t-1,g.order())
+    for k in [z+1..kmax]:
+        ptkg=ptk(g,k)
+        if k+ptkg<thz:
+            thz=k+ptkg
+    return thz
+# input: a graph G
+# output: the set [th(G),ko] such that th(G)= th(G,ko)
+def thk(g):
+    z=Z(g)
+    ko=z
+    t=ptk(g,z)
+    thz=z+t
+    kmax=min(z+t-1,g.order())
+    for k in range(z,kmax+1):
+        ptkg=ptk(g,k)
+        if k+ptkg<thz:
+            thz=k+ptkg
+            ko=k
+    return [thz,ko]
+
+def ptz(G,S):
+    V=set(G.vertices())
+    count = 0
+    done = False
+    active = set(S)
+    filled = set(S)
+    for v in V:
+        N=set(G.neighbors(v))
+        if v in active and N.issubset(filled):
+            active.remove(v)
+        if (v in filled) and (v not in active) and (len(N.intersection(filled)) == G.degree(v)-1):
+            active.add(v)   
+    while not done:
+        done = True
+        new_active = copy(active)
+        new_filled = copy(filled)
+        for v in active:
+            N=set(G.neighbors(v))
+            if len(N.intersection(filled)) == G.degree(v)-1:
+                if done:
+                    done = False
+                    count += 1
+                N.symmetric_difference_update(N.intersection(filled))
+                u=N.pop()
+                new_active.remove(v)
+                new_active.add(u)
+                new_filled.add(u)
+        active = copy(new_active)
+        filled = copy(new_filled)
+        # print filled
+        for v in V:
+            N=set(G.neighbors(v))
+            if v in active and N.issubset(filled):
+                active.remove(v)
+            if (v in filled) and (v not in active) and (len(N.intersection(filled)) == G.degree(v)-1):
+                active.add(v)
+    if len(filled)==len(V):
+        return count
+    return -1
+
+def ptk(G,k):
+    V=set(G.vertices())
+    sets = Subsets(V,k)
+    pt=len(V)+1
+    for S in sets:
+        count = 0
+        done = False
+        active = set(S)
+        filled = set(S)
+        for v in V:
+            N=set(G.neighbors(v))
+            if v in active and N.issubset(filled):
+                active.remove(v)
+            if (v in filled) and (v not in active) and (len(N.intersection(filled)) == G.degree(v)-1):
+                active.add(v)   
+        while not done:
+            done = True
+            new_active = copy(active)
+            new_filled = copy(filled)
+            for v in active:
+                N=set(G.neighbors(v))
+                if len(N.intersection(filled)) == G.degree(v)-1:
+                    if done:
+                        done = False
+                        count += 1
+                    N.symmetric_difference_update(N.intersection(filled))
+                    u=N.pop()
+                    new_active.remove(v)
+                    new_active.add(u)
+                    new_filled.add(u)
+            active = copy(new_active)
+            filled = copy(new_filled)
+            # print filled
+            for v in V:
+                N=set(G.neighbors(v))
+                if v in active and N.issubset(filled):
+                    active.remove(v)
+                if (v in filled) and (v not in active) and (len(N.intersection(filled)) == G.degree(v)-1):
+                    active.add(v)
+        if len(filled)==len(V):
+            if count < pt:
+                pt=count
+    return pt
+# propagation time pt(G)
+# input: a graph G
+# output: propagation time pt(G)=pt(G,Z(G))
+def pt(g):
+    ptg=ptk(g,Z(g))
+    return ptg
+
+def ptpk(G,k):
+    ord=G.order()
+    V = G.vertices()
+    S = Subsets(V,k)
+    ptp = -1
+    for s in S:
+        ptps=pt_plus(G,s)
+        if (ptp < 0):
+            ptp=ptps
+        if (ptps >= 0) and (ptps < ptp):
+            ptp=ptps
+    return ptp
+
+def ptpk(G,S):
+    ord=G.order()
+    V = G.vertices()
+    #S = Subsets(V,k)
+    ptp = -1
+    for s in S:
+        ptps=pt_plus(G,s)
+        if (ptp < 0):
+            ptp=ptps
+        if (ptps >= 0) and (ptps < ptp):
+            ptp=ptps
+    return ptp   
+
+def ptpk(G,k):
+    ord=G.order()
+    V = G.vertices()
+    S = Subsets(V,k)
+    ptp = -1
+    for s in S:
+        ptps=pt_plus(G,s)
+        if (ptp < 0):
+            ptp=ptps
+        if (ptps >= 0) and (ptps < ptp):
+            ptp=ptps
+    return ptp    
+# function to compute pt_+(G) = pt_+(G,Z_+(G))
+# input: a graph G  
+# output: pt_+(G) 
+def ptp(G):
+    ptpg=ptpk(G,Zplus(G))
+    return ptpg 
+
+def is_minimal_pzf_set(g,S):
+    if pt_plus(g,S)==-1:
+        return False
+    for s in Subsets(S,len(S)-1):
+        if pt_plus(g,s)>=0:
+            return False
+    return True    
+
+def minimal_pzf_sets(g):
+    n=g.order()
+    Z=Zplus(g)
+    V=g.vertices()
+    minpzfsets=[]
+
+    for subset in Subsets(V,Z):
+        if pt_plus(g,subset)>=0:
+            for i in range(Z,n):
+                for subset in Subsets(V,i):
+                    if pt_plus(g,subset)>=0 and is_minimal_pzf_set(g,subset):
+                        if subset not in minpzfsets:
+                            minpzfsets.append(subset)
+    return minpzfsets
+
+def minimum_pzf_sets(g):
+    n=g.order()
+    Z=Zplus(g)
+    V=g.vertices()
+    minpzfsets=[]
+    
+    for subset in Subsets(V,Z):
+        if pt_plus(g,subset)>=0 and is_minimal_pzf_set(g,subset):
+            if subset not in minpzfsets:
+                minpzfsets.append(subset)
+    return minpzfsets    
+
+def minimal_zf_size(g,interval=False):
+    lengths=[]
+    min_sets=minimal_zf_sets(g)
+    for r in min_sets:
+        if len(r) not in lengths:
+            lengths.append(len(r))
+    if interval==True:
+        return lengths
+    else:
+        return max(lengths)
+
+def has_fixed_prop_time(g):
+    prop_times=[]
+    zf_sets=minimal_zf_sets(g)
+    for r in zf_sets:
+        ptgs=ptz(g,r)
+        if ptgs not in prop_times:
+            prop_times.append(ptgs)
+    if len(prop_times)==1 or 0:
+        return True
+    return False 
+
+def minimal_pzf_size(g,interval=False):
+    lengths=[]
+    min_sets=minimal_pzf_sets(g)
+    for r in min_sets:
+        if len(r) not in lengths:
+            lengths.append(len(r))
+    if interval==True:
+        return lengths
+    else:
+        return max(lengths)
+
+def has_fixed_prop_time_plus(g):
+    prop_times=[]
+    zf_sets=minimal_pzf_sets(g)
+    if len(zf_sets)==0:
+        return True
+    for r in zf_sets:
+        ptgs=pt_plus(g,r)
+        if ptgs not in prop_times:
+            prop_times.append(ptgs)
+    if len(prop_times)==1 or 0:
+        return True
+    return False    
+
+def add_dom_vertex(g):
+    h=g.copy()
+    vert=h.order()
+    for v in h.vertices():
+        h.add_edge(vert,v)
+    return h    
+
+def threshold_graph(seq= [ 0]):
+    n=len(seq)
+    rng=range(n)
+    g=graphs.EmptyGraph()
+    for i in rng:
+        verts=g.vertices()
+        g.add_vertex(i)
+        #g.show()
+        if seq[i]!=0:
+            for v in verts:
+                g.add_edge(v,i)
+    return g        
+
