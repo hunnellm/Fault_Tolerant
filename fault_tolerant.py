@@ -671,3 +671,131 @@ def threshold_graph(seq= [ 0]):
                 g.add_edge(v,i)
     return g        
 
+def LeakyForts(graph, leaks, PSD):
+    """
+    Returns a list of forts that can be used to determine leaky forcing number.
+    
+    A fort is appended to the list of forts if the total number of vertices outside the fort that are adjacent
+    to exactly one vertex (or one vertex in each connected component, if PSD is True) 
+    does not exceed the allowed number of leaks.
+    
+    Parameters:
+      graph: A SageMath graph object.
+      leaks: Number of leaks.
+      PSD: if True, use PSD leaky forcing (process each connected component separately).
+      
+    Returns:
+      A list of subsets (forts) that satisfy the leaky conditions, or a string message if too many leaks.
+    """
+    vertices = set(graph.vertices())
+    if leaks >= len(vertices):
+        return 'There are too many leaks'
+    
+    fort_list = []
+    from sage.graphs.connectivity import connected_components_subgraphs
+    
+    # Iterate over all nonempty subsets of vertices as candidate forts.
+    for fort in Subsets(list(vertices)):
+        if not fort:
+            continue
+        non_fort = vertices - set(fort)
+        leak_count = 0
+        valid = True  # flag to exit early if leak_count exceeds leaks
+        F = graph.subgraph(vertices=list(fort))
+        
+        if PSD:
+            # Process each connected component of the fort
+            for comp in connected_components_subgraphs(F):
+                comp_vertices = set(comp.vertices())
+                for u in non_fort:
+                    count_deg = sum(1 for v in graph.neighbors(u) if v in comp_vertices)
+                    if count_deg == 1:
+                        leak_count += 1
+                        if leak_count > leaks:
+                            valid = False
+                            break
+                if not valid:
+                    break
+        else:
+            # Standard leaky forcing: count neighbors in the entire fort
+            fort_vertices = set(F.vertices())
+            for u in non_fort:
+                count_deg = sum(1 for v in graph.neighbors(u) if v in fort_vertices)
+                if count_deg == 1:
+                    leak_count += 1
+                    if leak_count > leaks:
+                        valid = False
+                        break
+        
+        if valid and leak_count <= leaks:
+            fort_list.append(fort)
+    
+    return fort_list
+
+def LeakyNumber(graph, list_of_forts, leaks, Zflist, PSDforcing, k):
+    """
+    Computes the leaky forcing number for a graph given the a collection of forts.
+    
+    A set is a forcing set if it intersects every fort in list_of_forts.
+    If Zflist is False, the function returns the size of a minimal forcing set (as an integer)
+    as soon as one is found. If Zflist is True, it prints all forcing sets (though still returns
+    the minimal forcing set size).
+    
+    Parameters:
+      graph         : A SageMath graph.
+      list_of_forts : A list of forts (each fort is an iterable of vertices).
+      leaks         : Number of leaks.
+      Zflist        : if True, prints the full list of forcing sets.
+      PSDforcing    : if True, then it indicates whether PSD forcing is used.
+      k             : If > 0, restricts search to candidate forcing sets of size exactly k.
+                      If k is 0 or None, search proceeds by increasing subset size.
+    
+    Returns:
+      The size (as an integer) of a minimal forcing set if found; otherwise, None.
+    """
+    # Check if the allowed leaks are too high compared to the maximum vertex degree.
+    degrees = sorted(graph.degree())
+    if leaks >= degrees[-1]:
+        return(graph.order())  # All vertices would be in the leaky set.
+    
+    vertices = graph.vertices()
+    
+    # Pre-convert forts to sets for efficient membership testing.
+    forts = [set(F) for F in list_of_forts]
+    
+    forcing_sets = []         # Will collect all forcing sets found.
+    minimal_forcing_size = None
+    found_min = False
+    
+    # Determine the sizes to iterate over:
+    # If k > 0, consider only subsets of size k; otherwise, iterate from 1 to |V|.
+    if k is not None and k > 0:
+        subset_sizes = [k]
+    else:
+        subset_sizes = range(1, len(vertices) + 1)
+    
+    # Iterate over candidate forcing sets by increasing size.
+    for r in subset_sizes:
+        for candidate in Subsets(vertices, r):
+            candidate_set = set(candidate)
+            # A candidate is forcing if it intersects every fort.
+            if all(candidate_set & F for F in forts):
+                forcing_sets.append(candidate_set)
+                if not found_min:
+                    minimal_forcing_size = r
+                    found_min = True
+                    # If we don't need the full list, return immediately.
+                    if not Zflist:
+                        return int(minimal_forcing_size)
+        # If we're not restricting by size and found a minimal set, no need to search larger subsets.
+        if found_min and (k is None or k <= 0):
+            break
+
+    if not forcing_sets:
+        return int(0) #return 0 for no forcing sets found
+
+    if Zflist:
+        print('The set of all ell-leaky sets is:', forcing_sets)
+    
+    return int(minimal_forcing_size)
+
