@@ -87,7 +87,7 @@ def ftZ(g,faults=1,robust=False,all_sets=False):
             S.append(s)
             #print(S)
         for j in range(len(S)):
-            if ft_set(g,S[j])==True:
+            if ft_set(g,S[j],faults)==True:
                 if ftz==-1 or len(S[j])==ftz:
                     ftz=len(S[j])
                     ftz_sets.append(S[j])
