@@ -365,3 +365,6 @@ def fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False):
     if return_sets:
         return ftz, sorted(ftz_sets, key=lambda s: sorted(s))
     return ftz
+
+def ftz(g, faults=1, return_sets=False):
+    return fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False)
