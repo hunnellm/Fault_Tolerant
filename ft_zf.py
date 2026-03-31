@@ -367,4 +367,7 @@ def fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False):
     return ftz
 
 def ftz(g, faults=1, return_sets=False):
-    return fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False)
+    return fault_tolerant_zero_forcing_number(g, faults=1, return_sets)
+
+def Z(g,return_sets=False):
+    return fault_tolerant_zero_forcing_number(g, faults=1, return_sets)
