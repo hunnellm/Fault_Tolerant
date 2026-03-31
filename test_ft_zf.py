@@ -8,7 +8,7 @@ Run with:  pytest test_ft_zf.py -v
 import pytest
 import networkx as nx
 
-from ft_zf import fault_tolerant_zero_forcing_number, zero_forcing_number
+from ft_zf import fault_tolerant_zero_forcing_number, zero_forcing_number, load_all
 
 
 # ---------------------------------------------------------------------------
@@ -326,3 +326,71 @@ def _subsets_minus_one(s):
     lst = sorted(s)
     for i in range(len(lst)):
         yield frozenset(lst[:i] + lst[i + 1:])
+
+
+# ---------------------------------------------------------------------------
+# load_all
+# ---------------------------------------------------------------------------
+
+class TestLoadAll:
+    """Tests for the load_all() convenience function."""
+
+    EXPECTED_KEYS = {
+        "fault_tolerant_zero_forcing_number",
+        "zero_forcing_number",
+        "ftz",
+        "Z",
+        "load_all",
+    }
+
+    def test_returns_dict(self):
+        result = load_all()
+        assert isinstance(result, dict)
+
+    def test_contains_expected_keys(self):
+        result = load_all()
+        assert self.EXPECTED_KEYS == set(result.keys())
+
+    def test_all_values_are_callable(self):
+        for name, fn in load_all().items():
+            assert callable(fn), f"'{name}' is not callable"
+
+    def test_idempotent(self):
+        """Calling load_all() twice returns equivalent mappings."""
+        assert load_all() == load_all()
+
+    def test_zero_forcing_number_callable(self):
+        api = load_all()
+        assert api["zero_forcing_number"](nx.path_graph(5)) == 1
+
+    def test_fault_tolerant_zero_forcing_number_callable(self):
+        api = load_all()
+        assert api["fault_tolerant_zero_forcing_number"](nx.path_graph(5)) == 2
+
+    def test_ftz_alias_callable(self):
+        api = load_all()
+        assert api["ftz"](nx.path_graph(5), faults=1) == 2
+
+    def test_ftz_alias_respects_faults_param(self):
+        api = load_all()
+        # faults=0 should equal the standard zero forcing number
+        assert api["ftz"](nx.path_graph(5), faults=0) == 1
+
+    def test_Z_alias_callable(self):
+        api = load_all()
+        assert api["Z"](nx.path_graph(5)) == 1
+
+    def test_Z_alias_return_sets(self):
+        api = load_all()
+        num, sets = api["Z"](nx.path_graph(3), return_sets=True)
+        assert num == 1
+        assert frozenset({0}) in sets
+        assert frozenset({2}) in sets
+
+    def test_functions_are_live_references(self):
+        """Values in the dict must be the same objects as the module-level names."""
+        import ft_zf
+        api = load_all()
+        assert api["fault_tolerant_zero_forcing_number"] is ft_zf.fault_tolerant_zero_forcing_number
+        assert api["zero_forcing_number"] is ft_zf.zero_forcing_number
+        assert api["load_all"] is ft_zf.load_all
