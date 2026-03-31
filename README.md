@@ -45,6 +45,46 @@ Compute the standard zero forcing number Z(G).  Equivalent to
 
 ---
 
+### `ftz(g, faults=1, return_sets=False)`
+
+Short alias for `fault_tolerant_zero_forcing_number`.
+
+---
+
+### `Z(g)`
+
+Short alias for `zero_forcing_number`.
+
+---
+
+### `load_all()`
+
+Return a `dict` mapping every public name in this module to its callable.
+Calling `load_all()` is safe at any time and is fully idempotent — repeated
+calls always return an equivalent mapping.
+
+**Returns**
+
+| Key | Value |
+|---|---|
+| `"fault_tolerant_zero_forcing_number"` | compute ftZ(G, k) |
+| `"zero_forcing_number"` | compute Z(G) |
+| `"ftz"` | alias for `fault_tolerant_zero_forcing_number` |
+| `"Z"` | alias for `zero_forcing_number` |
+| `"load_all"` | this function |
+
+```python
+from ft_zf import load_all
+import networkx as nx
+
+api = load_all()
+api["zero_forcing_number"](nx.path_graph(5))           # 1
+api["fault_tolerant_zero_forcing_number"](nx.path_graph(5))  # 2
+api["ftz"](nx.path_graph(5), faults=0)                 # 1
+```
+
+---
+
 ### Graph formats
 
 All functions accept three graph representations:

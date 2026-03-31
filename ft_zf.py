@@ -17,6 +17,15 @@ fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False)
 zero_forcing_number(g)
     Compute the standard zero forcing number (equivalent to faults=0).
 
+ftz(g, faults=1, return_sets=False)
+    Short alias for fault_tolerant_zero_forcing_number.
+
+Z(g, return_sets=False)
+    Short alias for zero_forcing_number.
+
+load_all()
+    Return a dict mapping every public name in this module to its callable.
+
 Graph formats accepted
 ----------------------
 - NetworkX graph  (has .nodes() and .neighbors(v))
@@ -366,8 +375,58 @@ def fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False):
         return ftz, sorted(ftz_sets, key=lambda s: sorted(s))
     return ftz
 
-def ftz(g, faults=1, return_sets=False):
-    return fault_tolerant_zero_forcing_number(g, faults=1, return_sets)
+def ftz(g, faults: int = 1, return_sets: bool = False):
+    """Short alias for :func:`fault_tolerant_zero_forcing_number`."""
+    return fault_tolerant_zero_forcing_number(g, faults=faults, return_sets=return_sets)
 
-def Z(g,return_sets=False):
-    return fault_tolerant_zero_forcing_number(g, faults=1, return_sets)
+
+def Z(g, return_sets: bool = False):
+    """Short alias for :func:`zero_forcing_number`.
+
+    When ``return_sets=True`` the behaviour matches
+    ``fault_tolerant_zero_forcing_number(g, faults=0, return_sets=True)``.
+    """
+    return fault_tolerant_zero_forcing_number(g, faults=0, return_sets=return_sets)
+
+
+def load_all() -> dict:
+    """
+    Return all public API callables exported by this module.
+
+    Loading is instantaneous (no external files are read) and the returned
+    mapping always reflects the live function objects, so the call is safe
+    to make at any time and is fully idempotent.
+
+    Returns
+    -------
+    dict[str, callable]
+        A mapping from name to callable for every public function in
+        ``ft_zf``:
+
+        - ``"fault_tolerant_zero_forcing_number"`` — compute ftZ(G, k).
+        - ``"zero_forcing_number"`` — compute Z(G) (equivalent to faults=0).
+        - ``"ftz"`` — short alias for ``fault_tolerant_zero_forcing_number``.
+        - ``"Z"`` — short alias for ``zero_forcing_number``.
+        - ``"load_all"`` — this function.
+
+    Examples
+    --------
+    >>> import networkx as nx
+    >>> api = load_all()
+    >>> api["zero_forcing_number"](nx.path_graph(5))
+    1
+    >>> api["fault_tolerant_zero_forcing_number"](nx.path_graph(5))
+    2
+    >>> api["ftz"](nx.path_graph(5), faults=0)
+    1
+    >>> api2 = load_all()          # idempotent: second call is safe
+    >>> api == api2
+    True
+    """
+    return {
+        "fault_tolerant_zero_forcing_number": fault_tolerant_zero_forcing_number,
+        "zero_forcing_number": zero_forcing_number,
+        "ftz": ftz,
+        "Z": Z,
+        "load_all": load_all,
+    }
