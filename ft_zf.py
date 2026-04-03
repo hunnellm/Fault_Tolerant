@@ -430,3 +430,77 @@ def load_all() -> dict:
         "Z": Z,
         "load_all": load_all,
     }
+
+from itertools import combinations, permutations
+
+def identify_graphs(g1, g2, identify):
+    """
+    Return a list of all (non-isomorphic) graphs obtained by identifying
+    'identify' vertices of g1 with 'identify' vertices of g2 pairwise.
+
+    INPUT:
+      - g1, g2: Sage Graph objects
+      - identify: nonnegative integer k
+
+    OUTPUT:
+      - list of Sage Graph objects (deduplicated up to isomorphism)
+
+    Notes:
+      - Vertices are treated as distinct across g1 and g2 even if they have
+        equal labels; the function relabels internally to avoid collisions.
+      - The k identifications are done in all possible bijections between
+        chosen k-subsets.
+    """
+    k = int(identify)
+    if k < 0:
+        raise ValueError("identify must be >= 0")
+    if k > g1.num_verts() or k > g2.num_verts():
+        return []
+
+    # Relabel so vertex sets are disjoint and stable
+    G1 = g1.copy(immutable=False)
+    G2 = g2.copy(immutable=False)
+    G1.relabel({v: ("g1", v) for v in G1.vertices()}, inplace=True)
+    G2.relabel({v: ("g2", v) for v in G2.vertices()}, inplace=True)
+
+    V1 = list(G1.vertices())
+    V2 = list(G2.vertices())
+
+    results = []
+    canon_seen = set()
+
+    # helper: union graph, then contract vertices according to pairs
+    def glue_once(pairs):
+        # disjoint union: keep all edges, no edges between components
+        U = Graph()
+        U.add_vertices(V1)
+        U.add_edges(G1.edges(labels=False))
+        U.add_vertices(V2)
+        U.add_edges(G2.edges(labels=False))
+
+        # Contract each pair (u in g1, v in g2) into u, removing v
+        # Important: after contractions, later vertex names still exist,
+        # but only if not previously removed.
+        for (u, v) in pairs:
+            if u == v:
+                continue
+            if (u not in U) or (v not in U):
+                continue
+            U.merge_vertices([u, v])  # merges into one vertex (Sage chooses a representative)
+
+        return U
+
+    for A in combinations(V1, k):
+        for B in combinations(V2, k):
+            for permB in permutations(B):
+                pairs = list(zip(A, permB))
+                H = glue_once(pairs)
+
+                # Deduplicate up to isomorphism via canonical label
+                C = H.canonical_label()
+                key = (C.graph6_string() if hasattr(C, "graph6_string") else C.certificate())
+                if key not in canon_seen:
+                    canon_seen.add(key)
+                    results.append(H)
+
+    return results
