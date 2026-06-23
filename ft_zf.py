@@ -17,11 +17,29 @@ fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False)
 zero_forcing_number(g)
     Compute the standard zero forcing number (equivalent to faults=0).
 
+propagation_time(g, initial_set)
+    Compute the zero forcing propagation time of a given initial set.
+
+direct_fault_propagation_time(g, faults=1, return_sets=False)
+    Compute the direct fault propagation time dfpt(G).
+
+indirect_fault_propagation_time_of_set(g, B)
+    Compute ifpt(G, B) for a minimum fault tolerant zero forcing set B.
+
+indirect_fault_propagation_time(g, faults=1, return_sets=False)
+    Compute the indirect fault propagation time ifpt(G).
+
 ftz(g, faults=1, return_sets=False)
     Short alias for fault_tolerant_zero_forcing_number.
 
 Z(g, return_sets=False)
     Short alias for zero_forcing_number.
+
+dfpt(g, faults=1, return_sets=False)
+    Short alias for direct_fault_propagation_time.
+
+ifpt(g, faults=1, return_sets=False)
+    Short alias for indirect_fault_propagation_time.
 
 load_all()
     Return a dict mapping every public name in this module to its callable.
@@ -33,7 +51,7 @@ Graph formats accepted
 - dict            {vertex: iterable_of_neighbours}
 """
 
-from itertools import combinations
+from itertools import combinations, permutations
 
 # ---------------------------------------------------------------------------
 # Graph normalisation
@@ -122,6 +140,68 @@ def _zf_closure(adj_mask, initial_mask, n):
     return black
 
 
+
+def _bitmask_from_vertices(vertices, subset):
+    """Return the bitmask for ``subset`` using the given ordered ``vertices``."""
+    idx = {v: i for i, v in enumerate(vertices)}
+    mask = 0
+    for v in subset:
+        if v not in idx:
+            raise ValueError("vertex {!r} is not in the graph".format(v))
+        mask |= (1 << idx[v])
+    return mask
+
+
+
+def _propagation_time_from_mask(adj_mask, initial_mask, n, full_mask):
+    """
+    Compute propagation time for a zero forcing set given by ``initial_mask``.
+
+    The propagation time is the number of parallel forcing rounds needed to
+    color all vertices black, where in each round every currently black vertex
+    with a unique white neighbor forces that neighbor.
+
+    Parameters
+    ----------
+    adj_mask : list of int
+        Bitmask adjacency lists.
+    initial_mask : int
+        Bitmask of initially black vertices.
+    n : int
+        Number of vertices.
+    full_mask : int
+        Bitmask with all vertices black.
+
+    Returns
+    -------
+    int
+        The propagation time.
+
+    Raises
+    ------
+    ValueError
+        If ``initial_mask`` is not a zero forcing set.
+    """
+    black = initial_mask
+    steps = 0
+
+    while black != full_mask:
+        new_black = 0
+        for v in range(n):
+            if (black >> v) & 1:
+                white_nbrs = adj_mask[v] & ~black
+                if white_nbrs and not (white_nbrs & (white_nbrs - 1)):
+                    new_black |= white_nbrs
+
+        if new_black == 0:
+            raise ValueError("initial set is not a zero forcing set")
+
+        black |= new_black
+        steps += 1
+
+    return steps
+
+
 def _zero_forcing_number_internal(adj_mask, n, full_mask):
     """
     Compute Z(G) by testing subsets in increasing size order.
@@ -197,22 +277,41 @@ def zero_forcing_number(g):
     -------
     int
         The zero forcing number Z(G).
-
-    Examples
-    --------
-    >>> import networkx as nx
-    >>> zero_forcing_number(nx.path_graph(5))
-    1
-    >>> zero_forcing_number(nx.cycle_graph(4))
-    2
-    >>> zero_forcing_number(nx.complete_graph(4))
-    3
     """
     vertices, adj_mask, n = _adjacency_lists(g)
     if n == 0:
         return 0
     full_mask = (1 << n) - 1
     return _zero_forcing_number_internal(adj_mask, n, full_mask)
+
+
+
+def propagation_time(g, initial_set):
+    """
+    Compute the zero forcing propagation time of ``initial_set`` on ``g``.
+
+    Parameters
+    ----------
+    g : graph
+        A graph in any format supported by this module.
+    initial_set : iterable
+        Vertices initially colored black.
+
+    Returns
+    -------
+    int
+        Number of parallel forcing rounds needed to color all vertices.
+
+    Raises
+    ------
+    ValueError
+        If ``initial_set`` is not a zero forcing set.
+    """
+    vertices, adj_mask, n = _adjacency_lists(g)
+    full_mask = (1 << n) - 1
+    mask = _bitmask_from_vertices(vertices, initial_set)
+    return _propagation_time_from_mask(adj_mask, mask, n, full_mask)
+
 
 
 def fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False):
@@ -253,58 +352,6 @@ def fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False):
     ------
     ValueError
         If *faults* < 0.
-
-    Notes
-    -----
-    **Algorithm overview**
-
-    1. Compute the zero forcing number Z(G) to establish the lower bound
-       ftZ(G, k) ≥ Z(G) + k.
-    2. Iterate over vertex subsets in increasing size order starting from
-       Z(G) + k.
-    3. For each candidate set S of size *s*, check whether every
-       (s − k)-element subset is a zero forcing set.
-    4. Use a shared memoisation cache (mask → zero forcing closure) to avoid
-       redundant propagation computations across all subset checks.
-    5. Stop as soon as the minimum size is found (with early exit if
-       ``return_sets=False``).
-
-    **Complexity**
-
-    In the worst case the algorithm enumerates O(C(n, ftZ(G,k))) candidate
-    sets and performs O(C(ftZ, k)) zero forcing checks per candidate, each
-    O(n²).  Memoisation of closures substantially reduces repeated work.
-    The bitmask representation keeps constants small for graphs up to ~60
-    vertices; for larger graphs performance degrades but remains correct.
-
-    Examples
-    --------
-    >>> import networkx as nx
-
-    Path graph – ftZ equals 2 (the two endpoints):
-
-    >>> fault_tolerant_zero_forcing_number(nx.path_graph(5))
-    2
-
-    ``faults=0`` reduces to the standard zero forcing number:
-
-    >>> fault_tolerant_zero_forcing_number(nx.path_graph(5), faults=0)
-    1
-
-    Return all minimum sets:
-
-    >>> num, sets = fault_tolerant_zero_forcing_number(
-    ...     nx.path_graph(5), faults=1, return_sets=True)
-    >>> num
-    2
-    >>> sorted(sorted(s) for s in sets)
-    [[0, 4]]
-
-    Plain dict input:
-
-    >>> g = {0: [1], 1: [0, 2], 2: [1]}   # path P_3
-    >>> fault_tolerant_zero_forcing_number(g)
-    2
     """
     if faults < 0:
         raise ValueError("faults must be >= 0")
@@ -375,12 +422,149 @@ def fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False):
         return ftz, sorted(ftz_sets, key=lambda s: sorted(s))
     return ftz
 
-def ftz(g, faults: int = 1, return_sets: bool = False):
+
+
+def minimum_fault_tolerant_zero_forcing_sets(g, faults=1):
+    """
+    Return all minimum fault tolerant zero forcing sets of ``g``.
+
+    Parameters
+    ----------
+    g : graph
+        Graph in any format supported by this module.
+    faults : int, optional
+        Number of tolerated faults. Default is 1.
+
+    Returns
+    -------
+    tuple
+        ``(ftz, sets)`` where ``ftz`` is the minimum size and ``sets`` is the
+        list of all minimum fault tolerant zero forcing sets.
+    """
+    return fault_tolerant_zero_forcing_number(g, faults=faults, return_sets=True)
+
+
+
+def direct_fault_propagation_time(g, faults=1, return_sets=False):
+    """
+    Compute the direct fault propagation time ``dfpt(G)``.
+
+    This is the minimum propagation time among all minimum ``faults``-fault
+    tolerant zero forcing sets of ``g``.
+
+    Parameters
+    ----------
+    g : graph
+        Graph in any format supported by this module.
+    faults : int, optional
+        Number of tolerated faults. Default is 1.
+    return_sets : bool, optional
+        If True, also return the minimum FTZF sets achieving ``dfpt``.
+
+    Returns
+    -------
+    int
+        The direct fault propagation time.
+    tuple
+        If ``return_sets=True``, returns ``(dfpt, sets)``.
+    """
+    _, ft_sets = minimum_fault_tolerant_zero_forcing_sets(g, faults=faults)
+
+    best_time = None
+    best_sets = []
+
+    for B in ft_sets:
+        t = propagation_time(g, B)
+        if best_time is None or t < best_time:
+            best_time = t
+            best_sets = [B]
+        elif t == best_time:
+            best_sets.append(B)
+
+    if return_sets:
+        return best_time, sorted(best_sets, key=lambda s: sorted(s))
+    return best_time
+
+
+
+def indirect_fault_propagation_time_of_set(g, B):
+    """
+    Compute ``ifpt(G, B)`` for a minimum fault tolerant zero forcing set ``B``.
+
+    For each vertex ``v`` in ``B``, compute the propagation time of ``B - {v}``.
+    The result is the maximum of those propagation times.
+
+    Parameters
+    ----------
+    g : graph
+        Graph in any format supported by this module.
+    B : iterable
+        A minimum fault tolerant zero forcing set.
+
+    Returns
+    -------
+    int
+        ``ifpt(G, B)``.
+    """
+    B = frozenset(B)
+    worst_time = 0
+    for v in B:
+        t = propagation_time(g, B - {v})
+        if t > worst_time:
+            worst_time = t
+    return worst_time
+
+
+
+def indirect_fault_propagation_time(g, faults=1, return_sets=False):
+    """
+    Compute the indirect fault propagation time ``ifpt(G)``.
+
+    This is the minimum value of ``ifpt(G, B)`` among all minimum
+    ``faults``-fault tolerant zero forcing sets ``B`` of ``g``.
+
+    Parameters
+    ----------
+    g : graph
+        Graph in any format supported by this module.
+    faults : int, optional
+        Number of tolerated faults. Default is 1.
+    return_sets : bool, optional
+        If True, also return the minimum FTZF sets achieving ``ifpt``.
+
+    Returns
+    -------
+    int
+        The indirect fault propagation time.
+    tuple
+        If ``return_sets=True``, returns ``(ifpt, sets)``.
+    """
+    _, ft_sets = minimum_fault_tolerant_zero_forcing_sets(g, faults=faults)
+
+    best_time = None
+    best_sets = []
+
+    for B in ft_sets:
+        t = indirect_fault_propagation_time_of_set(g, B)
+        if best_time is None or t < best_time:
+            best_time = t
+            best_sets = [B]
+        elif t == best_time:
+            best_sets.append(B)
+
+    if return_sets:
+        return best_time, sorted(best_sets, key=lambda s: sorted(s))
+    return best_time
+
+
+
+def ftz(g, faults=1, return_sets=False):
     """Short alias for :func:`fault_tolerant_zero_forcing_number`."""
     return fault_tolerant_zero_forcing_number(g, faults=faults, return_sets=return_sets)
 
 
-def Z(g, return_sets: bool = False):
+
+def Z(g, return_sets=False):
     """Short alias for :func:`zero_forcing_number`.
 
     When ``return_sets=True`` the behaviour matches
@@ -389,7 +573,20 @@ def Z(g, return_sets: bool = False):
     return fault_tolerant_zero_forcing_number(g, faults=0, return_sets=return_sets)
 
 
-def load_all() -> dict:
+
+def dfpt(g, faults=1, return_sets=False):
+    """Short alias for :func:`direct_fault_propagation_time`."""
+    return direct_fault_propagation_time(g, faults=faults, return_sets=return_sets)
+
+
+
+def ifpt(g, faults=1, return_sets=False):
+    """Short alias for :func:`indirect_fault_propagation_time`."""
+    return indirect_fault_propagation_time(g, faults=faults, return_sets=return_sets)
+
+
+
+def load_all():
     """
     Return all public API callables exported by this module.
 
@@ -399,39 +596,25 @@ def load_all() -> dict:
 
     Returns
     -------
-    dict[str, callable]
+    dict
         A mapping from name to callable for every public function in
-        ``ft_zf``:
-
-        - ``"fault_tolerant_zero_forcing_number"`` — compute ftZ(G, k).
-        - ``"zero_forcing_number"`` — compute Z(G) (equivalent to faults=0).
-        - ``"ftz"`` — short alias for ``fault_tolerant_zero_forcing_number``.
-        - ``"Z"`` — short alias for ``zero_forcing_number``.
-        - ``"load_all"`` — this function.
-
-    Examples
-    --------
-    >>> import networkx as nx
-    >>> api = load_all()
-    >>> api["zero_forcing_number"](nx.path_graph(5))
-    1
-    >>> api["fault_tolerant_zero_forcing_number"](nx.path_graph(5))
-    2
-    >>> api["ftz"](nx.path_graph(5), faults=0)
-    1
-    >>> api2 = load_all()          # idempotent: second call is safe
-    >>> api == api2
-    True
+        ``ft_zf``.
     """
     return {
         "fault_tolerant_zero_forcing_number": fault_tolerant_zero_forcing_number,
         "zero_forcing_number": zero_forcing_number,
+        "propagation_time": propagation_time,
+        "minimum_fault_tolerant_zero_forcing_sets": minimum_fault_tolerant_zero_forcing_sets,
+        "direct_fault_propagation_time": direct_fault_propagation_time,
+        "indirect_fault_propagation_time_of_set": indirect_fault_propagation_time_of_set,
+        "indirect_fault_propagation_time": indirect_fault_propagation_time,
         "ftz": ftz,
         "Z": Z,
+        "dfpt": dfpt,
+        "ifpt": ifpt,
         "load_all": load_all,
     }
 
-from itertools import combinations, permutations
 
 def identify_graphs(g1, g2, identify):
     """
@@ -486,7 +669,7 @@ def identify_graphs(g1, g2, identify):
                 continue
             if (u not in U) or (v not in U):
                 continue
-            U.merge_vertices([u, v])  # merges into one vertex (Sage chooses a representative)
+            U.merge_vertices([u, v])  # Sage chooses a representative
 
         return U
 
