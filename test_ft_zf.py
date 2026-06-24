@@ -211,17 +211,17 @@ class TestReturnSets:
             g, faults=1, return_sets=True)
         assert num_only == num_with_sets
 
-    def test_return_sets_true_sets_are_frozensets(self):
+    def test_return_sets_true_sets_are_int_masks(self):
         _, sets = fault_tolerant_zero_forcing_number(
             nx.path_graph(5), faults=1, return_sets=True)
-        assert all(isinstance(s, frozenset) for s in sets)
+        assert all(isinstance(s, int) for s in sets)
 
     def test_return_sets_correct_path_p5_faults1(self):
         num, sets = fault_tolerant_zero_forcing_number(
             nx.path_graph(5), faults=1, return_sets=True)
         assert num == 2
         # The only minimum 1-FT ZF set for P_5 is {0, 4}
-        assert frozenset({0, 4}) in sets
+        assert 17 in sets
 
     def test_return_sets_all_valid_ft_sets(self):
         """Every returned set must actually be a k-FT ZF set."""
@@ -230,16 +230,15 @@ class TestReturnSets:
             g, faults=1, return_sets=True)
         vertices, adj_mask, n = _unpack(g)
         full_mask = (1 << n) - 1
-        idx = {v: i for i, v in enumerate(vertices)}
-        for s in sets:
-            assert len(s) == num
-            mask = sum(1 << idx[v] for v in s)
+        for mask in sets:
+            assert mask.bit_count() == num
             # Check s is ZF
             from ft_zf import _zf_closure
             assert _zf_closure(adj_mask, mask, n) == full_mask
             # Check every (|s|-1) subset is ZF
-            for sub in _subsets_minus_one(s):
-                sub_mask = sum(1 << idx[v] for v in sub)
+            vertices_in_mask = [v for v in range(n) if (mask >> v) & 1]
+            for sub in _subsets_minus_one(vertices_in_mask):
+                sub_mask = sum(1 << v for v in sub)
                 assert _zf_closure(adj_mask, sub_mask, n) == full_mask
 
     def test_return_sets_no_duplicates(self):
@@ -253,15 +252,18 @@ class TestReturnSets:
         num, sets = fault_tolerant_zero_forcing_number(g, faults=0, return_sets=True)
         assert num == 1  # Z(P_3) = 1
         # P_3 has two ZF sets of size 1: {0} and {2}
-        assert frozenset({0}) in sets
-        assert frozenset({2}) in sets
+        assert 1 in sets
+        assert 4 in sets
 
     def test_return_sets_complete_k4_faults1(self):
         num, sets = fault_tolerant_zero_forcing_number(
             nx.complete_graph(4), faults=1, return_sets=True)
         assert num == 4
         # Only the full vertex set is a 1-FT ZF set for K_4
-        assert frozenset({0, 1, 2, 3}) in sets
+        assert 15 in sets
+
+    def test_return_sets_empty_graph_returns_zero_mask(self):
+        assert fault_tolerant_zero_forcing_number({}, faults=1, return_sets=True) == (0, [0])
 
     def test_return_sets_sorted_deterministic(self):
         """Two identical calls must return the same ordered list of sets."""
@@ -384,8 +386,8 @@ class TestLoadAll:
         api = load_all()
         num, sets = api["Z"](nx.path_graph(3), return_sets=True)
         assert num == 1
-        assert frozenset({0}) in sets
-        assert frozenset({2}) in sets
+        assert 1 in sets
+        assert 4 in sets
 
     def test_functions_are_live_references(self):
         """Values in the dict must be the same objects as the module-level names."""
