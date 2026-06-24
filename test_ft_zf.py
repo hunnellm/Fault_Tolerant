@@ -220,7 +220,7 @@ class TestReturnSets:
         num, sets = fault_tolerant_zero_forcing_number(
             nx.path_graph(5), faults=1, return_sets=True)
         assert num == 2
-        # The only minimum 1-FT ZF set for P_5 is {0, 4}
+        # The only minimum 1-FT ZF set for P_5 is {0, 4}, encoded as 0b10001.
         assert 17 in sets
 
     def test_return_sets_all_valid_ft_sets(self):
@@ -251,7 +251,7 @@ class TestReturnSets:
         g = nx.path_graph(3)
         num, sets = fault_tolerant_zero_forcing_number(g, faults=0, return_sets=True)
         assert num == 1  # Z(P_3) = 1
-        # P_3 has two ZF sets of size 1: {0} and {2}
+        # P_3 has two ZF sets of size 1: {0} -> 0b001 and {2} -> 0b100.
         assert 1 in sets
         assert 4 in sets
 
@@ -259,7 +259,7 @@ class TestReturnSets:
         num, sets = fault_tolerant_zero_forcing_number(
             nx.complete_graph(4), faults=1, return_sets=True)
         assert num == 4
-        # Only the full vertex set is a 1-FT ZF set for K_4
+        # Only the full vertex set is a 1-FT ZF set for K_4, encoded as 0b1111.
         assert 15 in sets
 
     def test_return_sets_empty_graph_returns_zero_mask(self):
@@ -386,6 +386,7 @@ class TestLoadAll:
         api = load_all()
         num, sets = api["Z"](nx.path_graph(3), return_sets=True)
         assert num == 1
+        # The minimum ZF sets are {0} -> 0b001 and {2} -> 0b100.
         assert 1 in sets
         assert 4 in sets
 
