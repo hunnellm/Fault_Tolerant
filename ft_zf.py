@@ -338,15 +338,16 @@ def fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False):
 
     return_sets : bool, optional
         If ``True``, return a tuple ``(ftZ, sets)`` where *sets* is a sorted
-        list of :class:`frozenset` objects, one per minimum k-fault tolerant
-        zero forcing set.  Default: **False**.
+        list of integer bitmasks, one per minimum k-fault tolerant zero
+        forcing set.  Default: **False**.
 
     Returns
     -------
     int
         The fault tolerant zero forcing number (when ``return_sets=False``).
-    tuple ``(int, list of frozenset)``
-        A pair ``(ftZ, sets)`` (when ``return_sets=True``).
+    tuple ``(int, list of int)``
+        A pair ``(ftZ, sets)`` (when ``return_sets=True``), where each set is
+        encoded as an integer bitmask over the internal sorted vertex order.
 
     Raises
     ------
@@ -360,7 +361,7 @@ def fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False):
 
     if n == 0:
         if return_sets:
-            return 0, [frozenset()]
+            return 0, [0]
         return 0
 
     full_mask = (1 << n) - 1
@@ -381,8 +382,8 @@ def fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False):
             if mask not in cache:
                 cache[mask] = _zf_closure(adj_mask, mask, n)
             if cache[mask] == full_mask:
-                zf_sets.append(frozenset(vertices[v] for v in combo))
-        return z, sorted(zf_sets, key=lambda s: sorted(s))
+                zf_sets.append(mask)
+        return z, sorted(zf_sets)
 
     # ----------------------------------------------------------------
     # General case: faults >= 1
@@ -411,7 +412,7 @@ def fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False):
                 ftz = size
                 found_at_this_size = True
                 if return_sets:
-                    ftz_sets.append(frozenset(vertices[v] for v in combo))
+                    ftz_sets.append(mask)
                 else:
                     break  # one set suffices when we only need the number
 
@@ -419,7 +420,7 @@ def fault_tolerant_zero_forcing_number(g, faults=1, return_sets=False):
             break
 
     if return_sets:
-        return ftz, sorted(ftz_sets, key=lambda s: sorted(s))
+        return ftz, sorted(ftz_sets)
     return ftz
 
 
