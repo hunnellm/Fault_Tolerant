@@ -3,7 +3,7 @@
 """
 Created on Fri Sep 15 21:33:17 2023
 
-@author: mark
+@author: mark "giraffe" hunnell
 """
 
 def gzerosgame(g,F=[],B=[]):
