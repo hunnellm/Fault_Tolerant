@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-loop_zf.py - Looped and regular zero forcing utilities.
+loop_zf.py - Zero forcing utilities with explicit simple-vs-looped APIs.
 
-This module provides:
-- Looped zero forcing number for a fixed loop configuration.
-- Maximum looped zero forcing number over all loop configurations.
-- Forcing-path extraction (regular and looped).
-- Reversal reconfiguration graphs (regular and looped), where two minimum
-  forcing sets are adjacent iff their path covers are pairwise reversals:
-    each path in one cover must match a reversed path in the other cover
-    (equivalently, they match after canonicalizing each path up to reversal).
+Key design choice:
+------------------
+This module separates SIMPLE and LOOPED forcing semantics in public APIs.
 
-All bitmask arithmetic is coerced to Python int for Sage safety.
+- SIMPLE rule (no white forcing):
+    only blue vertices may force a unique white neighbor.
+
+- LOOPED rule (white forcing allowed):
+    any vertex may force if it has exactly one white neighbor in the looped graph
+    (where a specified subset of vertices has loops; this subset may be empty).
+
+No public function infers one rule from missing parameters.
 """
 
 from itertools import combinations
@@ -64,7 +66,7 @@ def _bitmask_from_vertices(vertices, subset):
 
 def _loop_mask_from_vertices(vertices, looped_vertices):
     if looped_vertices is None:
-        return 0
+        raise ValueError("looped_vertices must be explicitly provided for looped functions (possibly empty set)")
     return int(_bitmask_from_vertices(vertices, looped_vertices))
 
 
@@ -74,8 +76,7 @@ def _loop_mask_from_vertices(vertices, looped_vertices):
 
 def _zf_closure(adj_mask, initial_mask, n):
     """
-    Regular zero forcing closure.
-    Only blue vertices may force their unique white neighbor.
+    SIMPLE closure: only blue vertices can force.
     """
     black = int(initial_mask)
     n = int(n)
@@ -94,8 +95,8 @@ def _zf_closure(adj_mask, initial_mask, n):
 
 def _lzf_closure(adj_mask, initial_mask, loop_mask, n):
     """
-    Looped zero forcing closure.
-    Any vertex may force if it has exactly one white neighbor in looped graph.
+    LOOPED closure: any vertex can force if it has a unique white neighbor
+    in looped graph.
     """
     blue = int(initial_mask)
     loop_mask = int(loop_mask)
@@ -122,7 +123,7 @@ def _lzf_closure(adj_mask, initial_mask, loop_mask, n):
     return int(blue)
 
 
-def _zero_forcing_number_internal(adj_mask, n, full_mask):
+def _simple_zero_forcing_number_internal(adj_mask, n, full_mask):
     n = int(n)
     full_mask = int(full_mask)
     for size in range(0, n + 1):
@@ -153,10 +154,53 @@ def _looped_zero_forcing_number_internal(adj_mask, loop_mask, n, full_mask):
 
 
 # ---------------------------------------------------------------------------
-# Public: fixed loop configuration
+# Public SIMPLE API
 # ---------------------------------------------------------------------------
 
-def looped_zero_forcing_closure(g, initial_set, looped_vertices=None):
+def simple_zero_forcing_closure(g, initial_set):
+    vertices, adj_mask, n = _adjacency_lists(g)
+    initial_mask = _bitmask_from_vertices(vertices, initial_set)
+    closure_mask = _zf_closure(adj_mask, initial_mask, n)
+    return frozenset(vertices[i] for i in range(n) if (closure_mask >> i) & 1)
+
+
+def is_simple_zero_forcing_set(g, initial_set):
+    vertices, adj_mask, n = _adjacency_lists(g)
+    initial_mask = _bitmask_from_vertices(vertices, initial_set)
+    full_mask = int((1 << n) - 1)
+    return _zf_closure(adj_mask, initial_mask, n) == full_mask
+
+
+def simple_zero_forcing_number(g, return_sets=False):
+    vertices, adj_mask, n = _adjacency_lists(g)
+
+    if n == 0:
+        if return_sets:
+            return 0, [frozenset()]
+        return 0
+
+    full_mask = int((1 << n) - 1)
+    z = _simple_zero_forcing_number_internal(adj_mask, n, full_mask)
+    if not return_sets:
+        return z
+
+    sets = []
+    for combo in combinations(range(n), z):
+        mask = 0
+        for v in combo:
+            mask |= (1 << int(v))
+        mask = int(mask)
+        if _zf_closure(adj_mask, mask, n) == full_mask:
+            sets.append(frozenset(vertices[v] for v in combo))
+
+    return z, sorted(sets, key=lambda s: sorted(s))
+
+
+# ---------------------------------------------------------------------------
+# Public LOOPED API
+# ---------------------------------------------------------------------------
+
+def looped_zero_forcing_closure(g, initial_set, looped_vertices):
     vertices, adj_mask, n = _adjacency_lists(g)
     initial_mask = _bitmask_from_vertices(vertices, initial_set)
     loop_mask = _loop_mask_from_vertices(vertices, looped_vertices)
@@ -164,7 +208,7 @@ def looped_zero_forcing_closure(g, initial_set, looped_vertices=None):
     return frozenset(vertices[i] for i in range(n) if (closure_mask >> i) & 1)
 
 
-def is_looped_zero_forcing_set(g, initial_set, looped_vertices=None):
+def is_looped_zero_forcing_set(g, initial_set, looped_vertices):
     vertices, adj_mask, n = _adjacency_lists(g)
     initial_mask = _bitmask_from_vertices(vertices, initial_set)
     loop_mask = _loop_mask_from_vertices(vertices, looped_vertices)
@@ -172,7 +216,7 @@ def is_looped_zero_forcing_set(g, initial_set, looped_vertices=None):
     return _lzf_closure(adj_mask, initial_mask, loop_mask, n) == full_mask
 
 
-def looped_zero_forcing_number(g, looped_vertices=None, return_sets=False):
+def looped_zero_forcing_number(g, looped_vertices, return_sets=False):
     vertices, adj_mask, n = _adjacency_lists(g)
 
     if n == 0:
@@ -188,25 +232,21 @@ def looped_zero_forcing_number(g, looped_vertices=None, return_sets=False):
         return lz
 
     sets = []
-    cache = {}
     for combo in combinations(range(n), lz):
         mask = 0
         for v in combo:
             mask |= (1 << int(v))
         mask = int(mask)
-        if mask not in cache:
-            cache[mask] = _lzf_closure(adj_mask, mask, loop_mask, n)
-        if cache[mask] == full_mask:
+        if _lzf_closure(adj_mask, mask, loop_mask, n) == full_mask:
             sets.append(frozenset(vertices[v] for v in combo))
 
     return lz, sorted(sets, key=lambda s: sorted(s))
 
 
-# ---------------------------------------------------------------------------
-# Public: max over all loop configurations
-# ---------------------------------------------------------------------------
-
 def maximum_looped_zero_forcing_number(g, return_configurations=False, return_sets=False):
+    """
+    Maximum looped zero forcing number over all loop configurations.
+    """
     vertices, adj_mask, n = _adjacency_lists(g)
 
     if n == 0:
@@ -251,16 +291,10 @@ def maximum_looped_zero_forcing_number(g, return_configurations=False, return_se
 
 
 # ---------------------------------------------------------------------------
-# Forcing-path extraction (looped and regular)
+# Forcing record + path extraction
 # ---------------------------------------------------------------------------
 
 def _looped_forcing_record(adj_mask, initial_mask, loop_mask, n):
-    """
-    Record looped forcing map parent[v] = u where u forced v.
-
-    Tie-breaking in same round for determinism:
-      smallest forced vertex index v first, then smallest u.
-    """
     n = int(n)
     full_mask = int((1 << n) - 1)
     blue = int(initial_mask)
@@ -270,7 +304,7 @@ def _looped_forcing_record(adj_mask, initial_mask, loop_mask, n):
     force_edges = []
 
     while True:
-        candidates = []  # (v, u)
+        candidates = []  # (v,u)
         for u in range(n):
             nbrs = int(adj_mask[u])
             if (loop_mask >> u) & 1:
@@ -309,10 +343,7 @@ def _looped_forcing_record(adj_mask, initial_mask, loop_mask, n):
     return bool(blue == full_mask), parent, force_edges
 
 
-def _zf_forcing_record(adj_mask, initial_mask, n):
-    """
-    Record regular forcing map parent[v] = u where u forced v.
-    """
+def _simple_forcing_record(adj_mask, initial_mask, n):
     n = int(n)
     full_mask = int((1 << n) - 1)
     blue = int(initial_mask)
@@ -321,7 +352,7 @@ def _zf_forcing_record(adj_mask, initial_mask, n):
     force_edges = []
 
     while True:
-        candidates = []  # (v, u)
+        candidates = []  # (v,u)
         for u in range(n):
             if (blue >> u) & 1:
                 white_nbrs = int(adj_mask[u]) & ~blue
@@ -360,11 +391,11 @@ def _zf_forcing_record(adj_mask, initial_mask, n):
 def _paths_from_parent(vertices, initial_mask, parent):
     """
     Build directed forcing paths from parent map.
-    Self-force u->u becomes singleton path (u,).
+    Self-force u->u contributes singleton path (u,).
     """
     n = len(vertices)
-
     children = {}
+
     for v, u in parent.items():
         if u == v:
             children.setdefault(v, [])
@@ -380,7 +411,6 @@ def _paths_from_parent(vertices, initial_mask, parent):
     visited = set()
     paths = []
 
-    # Build paths from initial blue vertices first
     for s in starts:
         if s in visited:
             continue
@@ -406,7 +436,6 @@ def _paths_from_parent(vertices, initial_mask, parent):
 
         paths.append(tuple(vertices[i] for i in path))
 
-    # Any uncovered forced vertices
     leftovers = sorted(set(parent.keys()) - visited)
     for v in leftovers:
         if v in visited:
@@ -417,7 +446,6 @@ def _paths_from_parent(vertices, initial_mask, parent):
             visited.add(v)
             continue
 
-        # Backtrack to root
         root = v
         seen = set()
         while root in parent and parent[root] != root and root not in seen:
@@ -446,11 +474,23 @@ def _paths_from_parent(vertices, initial_mask, parent):
     return sorted(paths, key=lambda p: (len(p), p))
 
 
-def looped_forcing_paths(g, initial_set, looped_vertices=None, verify_minimum=False):
-    """
-    Return directed forcing paths for looped forcing.
-    If a white vertex forces itself, path is singleton (v,).
-    """
+def simple_forcing_paths(g, initial_set, verify_minimum=False):
+    vertices, adj_mask, n = _adjacency_lists(g)
+    initial_mask = _bitmask_from_vertices(vertices, initial_set)
+
+    if verify_minimum:
+        z = simple_zero_forcing_number(g, return_sets=False)
+        if bin(initial_mask).count("1") != int(z):
+            raise ValueError("initial_set is not minimum size for simple zero forcing")
+
+    full_forced, parent, _ = _simple_forcing_record(adj_mask, initial_mask, n)
+    if not full_forced:
+        raise ValueError("initial_set is not a simple zero forcing set")
+
+    return _paths_from_parent(vertices, initial_mask, parent)
+
+
+def looped_forcing_paths(g, initial_set, looped_vertices, verify_minimum=False):
     vertices, adj_mask, n = _adjacency_lists(g)
     initial_mask = _bitmask_from_vertices(vertices, initial_set)
     loop_mask = _loop_mask_from_vertices(vertices, looped_vertices)
@@ -467,80 +507,28 @@ def looped_forcing_paths(g, initial_set, looped_vertices=None, verify_minimum=Fa
     return _paths_from_parent(vertices, initial_mask, parent)
 
 
-def zero_forcing_paths(g, initial_set, verify_minimum=False):
-    """
-    Return directed forcing paths for regular zero forcing.
-    """
-    vertices, adj_mask, n = _adjacency_lists(g)
-    initial_mask = _bitmask_from_vertices(vertices, initial_set)
-
-    if verify_minimum:
-        z = _zero_forcing_number_internal(adj_mask, n, int((1 << n) - 1))
-        if bin(initial_mask).count("1") != int(z):
-            raise ValueError("initial_set is not minimum size for regular zero forcing")
-
-    full_forced, parent, _ = _zf_forcing_record(adj_mask, initial_mask, n)
-    if not full_forced:
-        raise ValueError("initial_set is not a zero forcing set")
-
-    return _paths_from_parent(vertices, initial_mask, parent)
-
-
 # ---------------------------------------------------------------------------
-# Reversal logic: strict pairwise path reversal
+# Reversal reconfiguration graphs
+# Edge iff covers match path-by-path up to reversal
 # ---------------------------------------------------------------------------
 
 def _canonicalize_path_up_to_reversal(path):
-    """
-    Canonical representative of a path tuple up to reversal.
-    """
     p = tuple(path)
     rp = tuple(reversed(p))
     return p if p <= rp else rp
 
 
 def _path_cover_signature_strict_reversal(paths):
-    """
-    Canonical signature for path cover under strict pairwise reversal condition.
-
-    Two covers have the same signature iff each path in one corresponds to the
-    reverse of a path in the other (allowing identical singleton paths).
-    This is equivalent to multiset equality after canonicalizing each path up to
-    reversal and sorting.
-    """
     canon = [_canonicalize_path_up_to_reversal(p) for p in paths]
     return tuple(sorted(canon))
 
 
-# ---------------------------------------------------------------------------
-# Reversal reconfiguration graphs
-# ---------------------------------------------------------------------------
-
-def _minimum_zero_forcing_sets(g):
-    vertices, adj_mask, n = _adjacency_lists(g)
-    if n == 0:
-        return 0, [frozenset()]
-
-    full_mask = int((1 << n) - 1)
-    z = _zero_forcing_number_internal(adj_mask, n, full_mask)
-
-    sets = []
-    for combo in combinations(range(n), z):
-        mask = 0
-        for v in combo:
-            mask |= (1 << int(v))
-        mask = int(mask)
-
-        if _zf_closure(adj_mask, mask, n) == full_mask:
-            sets.append(frozenset(vertices[v] for v in combo))
-
-    return z, sorted(sets, key=lambda s: sorted(s))
+def _minimum_simple_zero_forcing_sets(g):
+    z, min_sets = simple_zero_forcing_number(g, return_sets=True)
+    return z, min_sets
 
 
 def _make_graph(vertex_labels, edges):
-    """
-    Return Sage Graph when available; fallback adjacency dict otherwise.
-    """
     try:
         H = Graph()
         H.add_vertices(vertex_labels)
@@ -555,21 +543,12 @@ def _make_graph(vertex_labels, edges):
 
 
 def reversal_reconfiguration_graph_simple(g, return_classes=False):
-    """
-    Reversal reconfiguration graph for regular zero forcing.
-
-    Vertices:
-        minimum zero forcing sets of G.
-    Edges:
-        between two vertices iff every path in one path cover is the reverse
-        of a path in the other (pairwise, as multisets).
-    """
-    _, min_sets = _minimum_zero_forcing_sets(g)
+    _, min_sets = _minimum_simple_zero_forcing_sets(g)
 
     classes = {}
     for S in min_sets:
         sig = _path_cover_signature_strict_reversal(
-            zero_forcing_paths(g, S, verify_minimum=False)
+            simple_forcing_paths(g, S, verify_minimum=False)
         )
         classes.setdefault(sig, []).append(S)
 
@@ -590,26 +569,13 @@ def reversal_reconfiguration_graph_simple(g, return_classes=False):
     return RG
 
 
-def reversal_reconfiguration_graph_looped(g, looped_vertices=None, return_classes=False):
-    """
-    Reversal reconfiguration graph for looped forcing (fixed loop configuration).
-
-    Vertices:
-        minimum looped zero forcing sets for the given loop configuration.
-    Edges:
-        between two vertices iff every path in one looped path cover is the
-        reverse of a path in the other (pairwise, as multisets).
-    """
-    _, min_sets = looped_zero_forcing_number(
-        g, looped_vertices=looped_vertices, return_sets=True
-    )
+def reversal_reconfiguration_graph_looped(g, looped_vertices, return_classes=False):
+    _, min_sets = looped_zero_forcing_number(g, looped_vertices=looped_vertices, return_sets=True)
 
     classes = {}
     for S in min_sets:
         sig = _path_cover_signature_strict_reversal(
-            looped_forcing_paths(
-                g, S, looped_vertices=looped_vertices, verify_minimum=False
-            )
+            looped_forcing_paths(g, S, looped_vertices=looped_vertices, verify_minimum=False)
         )
         classes.setdefault(sig, []).append(S)
 
@@ -631,53 +597,27 @@ def reversal_reconfiguration_graph_looped(g, looped_vertices=None, return_classe
 
 
 # ---------------------------------------------------------------------------
-# Aliases + exports
+# Chronological force lists (all possible)
 # ---------------------------------------------------------------------------
 
-def lzf(g, looped_vertices=None, return_sets=False):
-    """Alias for looped_zero_forcing_number."""
-    return looped_zero_forcing_number(
-        g, looped_vertices=looped_vertices, return_sets=return_sets
-    )
+def _single_bit_index(x):
+    return int(x.bit_length() - 1)
 
 
-def EZ(g, return_configurations=False, return_sets=False):
-    """Alias for maximum_looped_zero_forcing_number."""
-    return maximum_looped_zero_forcing_number(
-        g,
-        return_configurations=return_configurations,
-        return_sets=return_sets,
-    )
+def _possible_forces_simple(adj_mask, blue_mask, n):
+    blue_mask = int(blue_mask)
+    out = []
+    for u in range(int(n)):
+        if (blue_mask >> u) & 1:
+            white_nbrs = int(adj_mask[u]) & ~blue_mask
+            if white_nbrs and not (white_nbrs & (white_nbrs - 1)):
+                v = _single_bit_index(white_nbrs)
+                out.append((int(u), int(v)))
+    out.sort()
+    return out
 
 
-def load_all():
-    """
-    Return public API callables.
-    """
-    return {
-        "looped_zero_forcing_number": looped_zero_forcing_number,
-        "looped_zero_forcing_closure": looped_zero_forcing_closure,
-        "is_looped_zero_forcing_set": is_looped_zero_forcing_set,
-        "maximum_looped_zero_forcing_number": maximum_looped_zero_forcing_number,
-        "looped_forcing_paths": looped_forcing_paths,
-        "zero_forcing_paths": zero_forcing_paths,
-        "reversal_reconfiguration_graph_simple": reversal_reconfiguration_graph_simple,
-        "reversal_reconfiguration_graph_looped": reversal_reconfiguration_graph_looped,
-        "lzf": lzf,
-        "EZ": EZ,
-        "load_all": load_all,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Chronological forcing sequences (all possible)
-# ---------------------------------------------------------------------------
 def _possible_forces_looped(adj_mask, blue_mask, loop_mask, n):
-    """
-    Return all possible looped-rule forces (u,v) from current state.
-    Looped rule: any u (blue or white) may force if it has exactly one white
-    neighbor in the looped graph.
-    """
     blue_mask = int(blue_mask)
     loop_mask = int(loop_mask)
     out = []
@@ -693,124 +633,80 @@ def _possible_forces_looped(adj_mask, blue_mask, loop_mask, n):
     return out
 
 
-def _all_chronological_force_lists_indices(adj_mask, initial_mask, n, rule="simple", loop_mask=0):
-    """
-    Enumerate all possible chronological lists of forces.
-
-    Parameters
-    ----------
-    rule : {"simple","looped","looped_noloops"}
-        simple         : only blue vertices can force.
-        looped         : any vertex can force; use provided loop_mask.
-        looped_noloops : any vertex can force; loop_mask forced to 0.
-    """
+def _all_chronological_force_lists_simple_indices(adj_mask, initial_mask, n):
     n = int(n)
     initial_mask = int(initial_mask)
     full_mask = int((1 << n) - 1)
-    loop_mask = int(loop_mask)
-
-    if rule not in ("simple", "looped", "looped_noloops"):
-        raise ValueError("rule must be one of: 'simple', 'looped', 'looped_noloops'")
-
-    if rule == "looped_noloops":
-        loop_mask = 0
-
     memo = {}
 
     def rec(blue_mask):
         blue_mask = int(blue_mask)
         if blue_mask == full_mask:
             return [tuple()]
-
         if blue_mask in memo:
             return memo[blue_mask]
 
-        if rule == "simple":
-            candidates = _possible_forces_regular(adj_mask, blue_mask, n)
-        else:
-            candidates = _possible_forces_looped(adj_mask, blue_mask, loop_mask, n)
-
+        candidates = _possible_forces_simple(adj_mask, blue_mask, n)
         if not candidates:
             memo[blue_mask] = []
             return memo[blue_mask]
 
-        all_seqs = []
+        out = []
         for (u, v) in candidates:
             if (blue_mask >> v) & 1:
                 continue
             next_mask = int(blue_mask | (1 << v))
-            tails = rec(next_mask)
-            for t in tails:
-                all_seqs.append(((u, v),) + t)
+            for tail in rec(next_mask):
+                out.append(((u, v),) + tail)
 
-        memo[blue_mask] = all_seqs
-        return all_seqs
+        memo[blue_mask] = out
+        return out
 
     return rec(initial_mask)
 
 
-def all_chronological_forces(
-    g,
-    initial_set,
-    looped_vertices=None,
-    rule=None,
-    return_vertex_orders=False,
-):
-    """
-    Output all possible chronological force lists.
-
-    Toggle rule behavior with `rule`:
-      - rule="simple": simple-graph interpretation (white forcing not allowed).
-      - rule="looped": looped-rule interpretation (white forcing allowed), using
-        `looped_vertices` as loops (default if looped_vertices is provided).
-      - rule="looped_noloops": looped-rule interpretation with no loops, i.e.
-        white forces allowed on the underlying simple graph.
-
-    Backward compatibility:
-      - If rule is None:
-          * uses "looped" when looped_vertices is not None
-          * uses "simple" when looped_vertices is None
-    """
-    vertices, adj_mask, n = _adjacency_lists(g)
-    idx = {v: i for i, v in enumerate(vertices)}
-    initial_mask = _bitmask_from_vertices(vertices, initial_set)
+def _all_chronological_force_lists_looped_indices(adj_mask, initial_mask, loop_mask, n):
+    n = int(n)
+    initial_mask = int(initial_mask)
+    loop_mask = int(loop_mask)
     full_mask = int((1 << n) - 1)
+    memo = {}
 
-    # Backward-compatible default
-    if rule is None:
-        rule = "looped" if looped_vertices is not None else "simple"
+    def rec(blue_mask):
+        blue_mask = int(blue_mask)
+        if blue_mask == full_mask:
+            return [tuple()]
+        if blue_mask in memo:
+            return memo[blue_mask]
 
-    if rule not in ("simple", "looped", "looped_noloops"):
-        raise ValueError("rule must be one of: 'simple', 'looped', 'looped_noloops'")
+        candidates = _possible_forces_looped(adj_mask, blue_mask, loop_mask, n)
+        if not candidates:
+            memo[blue_mask] = []
+            return memo[blue_mask]
 
-    if rule == "simple":
-        if _zf_closure(adj_mask, initial_mask, n) != full_mask:
-            raise ValueError("initial_set is not a zero forcing set (simple rule)")
-        seqs_idx = _all_chronological_force_lists_indices(
-            adj_mask, initial_mask, n, rule="simple", loop_mask=0
-        )
+        out = []
+        for (u, v) in candidates:
+            if (blue_mask >> v) & 1:
+                continue
+            next_mask = int(blue_mask | (1 << v))
+            for tail in rec(next_mask):
+                out.append(((u, v),) + tail)
 
-    elif rule == "looped_noloops":
-        # looped rule with zero loops
-        if _lzf_closure(adj_mask, initial_mask, 0, n) != full_mask:
-            raise ValueError("initial_set is not a zero forcing set (looped rule, no loops)")
-        seqs_idx = _all_chronological_force_lists_indices(
-            adj_mask, initial_mask, n, rule="looped_noloops", loop_mask=0
-        )
+        memo[blue_mask] = out
+        return out
 
-    else:  # rule == "looped"
-        loop_mask = _loop_mask_from_vertices(vertices, looped_vertices)
-        if _lzf_closure(adj_mask, initial_mask, loop_mask, n) != full_mask:
-            raise ValueError("initial_set is not a zero forcing set (looped rule)")
-        seqs_idx = _all_chronological_force_lists_indices(
-            adj_mask, initial_mask, n, rule="looped", loop_mask=loop_mask
-        )
+    return rec(initial_mask)
 
-    seqs = [tuple((vertices[u], vertices[v]) for (u, v) in seq) for seq in seqs_idx]
 
-    if not return_vertex_orders:
-        return seqs
-
+def _decorate_sequences(vertices, initial_mask, idx, seqs):
+    """
+    For each chronology seq=[(u1,v1),...], return triple:
+      (
+        seq,
+        tuple(forcers_in_first_appearance_order + nonforcers),
+        tuple(forced_in_order + initial_blue_vertices)
+      )
+    """
     results = []
     all_vertices = list(vertices)
 
@@ -834,83 +730,55 @@ def all_chronological_forces(
         results.append((seq, forcer_with_nonforcers, forced_plus_initial))
 
     return results
-    
-def _single_bit_index(x):
-    """Return index of single-bit positive int x."""
-    return int(x.bit_length() - 1)
 
 
-def _possible_forces_regular(adj_mask, blue_mask, n):
+def all_chronological_forces_simple(g, initial_set, return_vertex_orders=False):
+    vertices, adj_mask, n = _adjacency_lists(g)
+    idx = {v: i for i, v in enumerate(vertices)}
+    initial_mask = _bitmask_from_vertices(vertices, initial_set)
+    full_mask = int((1 << n) - 1)
+
+    if _zf_closure(adj_mask, initial_mask, n) != full_mask:
+        raise ValueError("initial_set is not a simple zero forcing set")
+
+    seqs_idx = _all_chronological_force_lists_simple_indices(adj_mask, initial_mask, n)
+    seqs = [tuple((vertices[u], vertices[v]) for (u, v) in seq) for seq in seqs_idx]
+
+    if not return_vertex_orders:
+        return seqs
+    return _decorate_sequences(vertices, initial_mask, idx, seqs)
+
+
+def all_chronological_forces_looped(g, initial_set, looped_vertices, return_vertex_orders=False):
+    vertices, adj_mask, n = _adjacency_lists(g)
+    idx = {v: i for i, v in enumerate(vertices)}
+    initial_mask = _bitmask_from_vertices(vertices, initial_set)
+    loop_mask = _loop_mask_from_vertices(vertices, looped_vertices)
+    full_mask = int((1 << n) - 1)
+
+    if _lzf_closure(adj_mask, initial_mask, loop_mask, n) != full_mask:
+        raise ValueError("initial_set is not a looped zero forcing set for this loop configuration")
+
+    seqs_idx = _all_chronological_force_lists_looped_indices(adj_mask, initial_mask, loop_mask, n)
+    seqs = [tuple((vertices[u], vertices[v]) for (u, v) in seq) for seq in seqs_idx]
+
+    if not return_vertex_orders:
+        return seqs
+    return _decorate_sequences(vertices, initial_mask, idx, seqs)
+
+
+# ---------------------------------------------------------------------------
+# Reordered matrix constructors
+# ---------------------------------------------------------------------------
+
+def _base_A_matrix(g, looped_vertices=None):
     """
-    Return all possible regular forces (u,v) from current state.
-    Regular rule: blue u with exactly one white neighbor v.
-    """
-    blue_mask = int(blue_mask)
-    out = []
-    for u in range(int(n)):
-        if (blue_mask >> u) & 1:
-            white_nbrs = int(adj_mask[u]) & ~blue_mask
-            if white_nbrs and not (white_nbrs & (white_nbrs - 1)):
-                v = _single_bit_index(white_nbrs)
-                out.append((int(u), int(v)))
-    out.sort()
-    return out
-
-
-
-# Optional short alias
-def acf(g, initial_set, looped_vertices=None, rule=None, return_vertex_orders=False):
-    return all_chronological_forces(
-        g,
-        initial_set,
-        looped_vertices=looped_vertices,
-        rule=rule,
-        return_vertex_orders=return_vertex_orders,
-    )
-  
-def forcing_order_matrix(
-    g,
-    force_order,
-    looped_vertices=None,
-    include_idle_vertices=True,
-):
-    """
-    Build reordered matrix A from graph G and a chosen force chronology.
-
-    Steps:
-    1) Start with A = adjacency_matrix(G) + 2*I.
-    2) If looped_vertices is provided, then for each looped vertex v set A[v,v]=3
-       (before reordering).
-    3) Reorder rows by forcer order (chronological first appearance in force_order).
-       If include_idle_vertices=True, append vertices that never force in the
-       remaining graph order.
-    4) Reorder columns by forced order (chronological targets in force_order).
-       If include_idle_vertices=True, append initial blue vertices (those never
-       forced) in remaining graph order.
-
-    Parameters
-    ----------
-    g : Sage graph (or graph supported by this module's _adjacency_lists)
-    force_order : iterable of pairs (u,v)
-        One chronological forcing list.
-    looped_vertices : iterable or None
-        Vertices with loops (diagonal set to 3).
-    include_idle_vertices : bool
-        If True, returns a full n x n reordered matrix by appending remaining
-        vertices as described above.
-
-    Returns
-    -------
-    (A_reordered, row_order, col_order)
-        A_reordered : Sage matrix if matrix constructor is available, else list of lists
-        row_order   : tuple of vertex labels used for row permutation
-        col_order   : tuple of vertex labels used for col permutation
+    Build A = adjacency(G) + 2I, then set A[v,v]=3 for v in looped_vertices.
     """
     vertices, adj_mask, n = _adjacency_lists(g)
     n = int(n)
-
-    # Build dense adjacency in vertex order used by this module
     idx = {v: i for i, v in enumerate(vertices)}
+
     M = [[0] * n for _ in range(n)]
     for i in range(n):
         m = int(adj_mask[i])
@@ -918,63 +786,258 @@ def forcing_order_matrix(
             if (m >> j) & 1:
                 M[i][j] = 1
 
-    # A = adjacency + 2I
     for i in range(n):
         M[i][i] += 2
 
-    # Looped diagonal override to 3 (before reorder)
     if looped_vertices is not None:
         for v in looped_vertices:
             if v not in idx:
                 raise ValueError("looped vertex {!r} is not in graph".format(v))
-            i = idx[v]
-            M[i][i] = 3
+            M[idx[v]][idx[v]] = 3
 
-    # Normalize/validate force order
-    force_order = list(force_order)
-    for pair in force_order:
-        if not (isinstance(pair, (tuple, list)) and len(pair) == 2):
-            raise ValueError("force_order must contain pairs (u,v)")
-        u, v = pair
-        if u not in idx or v not in idx:
-            raise ValueError("force pair ({!r},{!r}) uses vertex not in graph".format(u, v))
+    return vertices, idx, M
 
-    # Row order = vertices that perform a force (first appearance)
-    seen_forcer = set()
-    row_order = []
-    for (u, _) in force_order:
-        if u not in seen_forcer:
-            seen_forcer.add(u)
-            row_order.append(u)
 
-    # Col order = vertices as they are forced (chronological targets)
-    col_order = [v for (_, v) in force_order]
+def _matrix_from_orders(vertices, idx, M, row_order, col_order):
+    n = len(vertices)
+    row_order = list(row_order)
+    col_order = list(col_order)
 
-    if include_idle_vertices:
-        # append vertices that never force
-        row_order += [v for v in vertices if v not in seen_forcer]
-
-        # initial blue vertices = never forced
-        forced_set = set(col_order)
-        initial_blues = [v for v in vertices if v not in forced_set]
-        col_order += initial_blues
-
-    # For full matrix mode, row/col orders must each have size n
     if len(row_order) != n or len(col_order) != n:
-        raise ValueError(
-            "row/col order lengths are ({}, {}), expected ({}, {}). "
-            "Use include_idle_vertices=True for full n x n matrix.".format(
-                len(row_order), len(col_order), n, n
-            )
-        )
+        raise ValueError("row_order and col_order must both have length n={}".format(n))
+    if set(row_order) != set(vertices):
+        raise ValueError("row_order is not a permutation of graph vertices")
+    if set(col_order) != set(vertices):
+        raise ValueError("col_order is not a permutation of graph vertices")
 
-    # Apply permutations
     row_idx = [idx[v] for v in row_order]
     col_idx = [idx[v] for v in col_order]
     R = [[M[i][j] for j in col_idx] for i in row_idx]
 
-    # Return Sage matrix if available
     try:
         return matrix(R), tuple(row_order), tuple(col_order)
     except Exception:
         return R, tuple(row_order), tuple(col_order)
+
+
+def forcing_order_matrix_simple(g, force_order, include_idle_vertices=True):
+    """
+    Build reordered A for SIMPLE chronology.
+
+    Rows: vertices that force in first-appearance chronological order;
+          append non-forcers if include_idle_vertices=True.
+    Cols: vertices forced in chronological order;
+          append initial blue vertices if include_idle_vertices=True.
+    """
+    vertices, idx, M = _base_A_matrix(g, looped_vertices=None)
+    n = len(vertices)
+
+    force_order = list(force_order)
+    for p in force_order:
+        if not (isinstance(p, (tuple, list)) and len(p) == 2):
+            raise ValueError("force_order must contain pairs (u,v)")
+        u, v = p
+        if u not in idx or v not in idx:
+            raise ValueError("force pair ({!r},{!r}) uses vertex not in graph".format(u, v))
+
+    seen_forcer = set()
+    row_order = []
+    col_order = []
+
+    for (u, v) in force_order:
+        if u not in seen_forcer:
+            seen_forcer.add(u)
+            row_order.append(u)
+        col_order.append(v)
+
+    if include_idle_vertices:
+        row_order += [v for v in vertices if v not in seen_forcer]
+        forced_set = set(col_order)
+        initial_blues = [v for v in vertices if v not in forced_set]
+        col_order += initial_blues
+
+    if len(row_order) != n or len(col_order) != n:
+        raise ValueError(
+            "order lengths ({}, {}) do not match n={}; "
+            "set include_idle_vertices=True for full matrix.".format(len(row_order), len(col_order), n)
+        )
+
+    return _matrix_from_orders(vertices, idx, M, row_order, col_order)
+
+
+def forcing_order_matrix_looped(g, force_order, looped_vertices, include_idle_vertices=True):
+    """
+    Build reordered A for LOOPED chronology (loops exactly on looped_vertices).
+    """
+    vertices, idx, M = _base_A_matrix(g, looped_vertices=looped_vertices)
+    n = len(vertices)
+
+    force_order = list(force_order)
+    for p in force_order:
+        if not (isinstance(p, (tuple, list)) and len(p) == 2):
+            raise ValueError("force_order must contain pairs (u,v)")
+        u, v = p
+        if u not in idx or v not in idx:
+            raise ValueError("force pair ({!r},{!r}) uses vertex not in graph".format(u, v))
+
+    seen_forcer = set()
+    row_order = []
+    col_order = []
+
+    for (u, v) in force_order:
+        if u not in seen_forcer:
+            seen_forcer.add(u)
+            row_order.append(u)
+        col_order.append(v)
+
+    if include_idle_vertices:
+        row_order += [v for v in vertices if v not in seen_forcer]
+        forced_set = set(col_order)
+        initial_blues = [v for v in vertices if v not in forced_set]
+        col_order += initial_blues
+
+    if len(row_order) != n or len(col_order) != n:
+        raise ValueError(
+            "order lengths ({}, {}) do not match n={}; "
+            "set include_idle_vertices=True for full matrix.".format(len(row_order), len(col_order), n)
+        )
+
+    return _matrix_from_orders(vertices, idx, M, row_order, col_order)
+
+
+def forcing_order_matrix_from_acf_entry_simple(g, acf_entry):
+    """
+    Build reordered A from one entry of
+      all_chronological_forces_simple(..., return_vertex_orders=True).
+    """
+    if not (isinstance(acf_entry, (tuple, list)) and len(acf_entry) == 3):
+        raise ValueError("acf_entry must be (force_sequence, row_order, col_order)")
+    _, row_order, col_order = acf_entry
+    vertices, idx, M = _base_A_matrix(g, looped_vertices=None)
+    return _matrix_from_orders(vertices, idx, M, row_order, col_order)
+
+
+def forcing_order_matrix_from_acf_entry_looped(g, acf_entry, looped_vertices):
+    """
+    Build reordered A from one entry of
+      all_chronological_forces_looped(..., return_vertex_orders=True).
+    """
+    if not (isinstance(acf_entry, (tuple, list)) and len(acf_entry) == 3):
+        raise ValueError("acf_entry must be (force_sequence, row_order, col_order)")
+    _, row_order, col_order = acf_entry
+    vertices, idx, M = _base_A_matrix(g, looped_vertices=looped_vertices)
+    return _matrix_from_orders(vertices, idx, M, row_order, col_order)
+
+
+# ---------------------------------------------------------------------------
+# Explicit aliases + deprecated ambiguous wrappers
+# ---------------------------------------------------------------------------
+
+def szf(g, return_sets=False):
+    """Alias for simple_zero_forcing_number."""
+    return simple_zero_forcing_number(g, return_sets=return_sets)
+
+
+def lzf(g, looped_vertices, return_sets=False):
+    """Alias for looped_zero_forcing_number."""
+    return looped_zero_forcing_number(g, looped_vertices=looped_vertices, return_sets=return_sets)
+
+
+def EZ(g, return_configurations=False, return_sets=False):
+    """Alias for maximum_looped_zero_forcing_number."""
+    return maximum_looped_zero_forcing_number(
+        g,
+        return_configurations=return_configurations,
+        return_sets=return_sets,
+    )
+
+
+def zero_forcing_paths(g, initial_set, verify_minimum=False):
+    """
+    Deprecated ambiguous name. Use simple_forcing_paths.
+    """
+    return simple_forcing_paths(g, initial_set, verify_minimum=verify_minimum)
+
+
+def all_chronological_forces(*args, **kwargs):
+    """
+    Deprecated ambiguous entry point.
+    """
+    raise ValueError(
+        "all_chronological_forces is deprecated due to simple/looped ambiguity. "
+        "Use all_chronological_forces_simple(...) or "
+        "all_chronological_forces_looped(..., looped_vertices=...)."
+    )
+
+
+def acf(*args, **kwargs):
+    """
+    Deprecated ambiguous alias.
+    """
+    raise ValueError(
+        "acf is deprecated due to simple/looped ambiguity. "
+        "Use all_chronological_forces_simple(...) or "
+        "all_chronological_forces_looped(..., looped_vertices=...)."
+    )
+
+
+def forcing_order_matrix(*args, **kwargs):
+    """
+    Deprecated ambiguous entry point.
+    """
+    raise ValueError(
+        "forcing_order_matrix is deprecated due to simple/looped ambiguity. "
+        "Use forcing_order_matrix_simple(...) or "
+        "forcing_order_matrix_looped(..., looped_vertices=...)."
+    )
+
+
+def forcing_order_matrix_from_acf_entry(*args, **kwargs):
+    """
+    Deprecated ambiguous entry point.
+    """
+    raise ValueError(
+        "forcing_order_matrix_from_acf_entry is deprecated due to simple/looped ambiguity. "
+        "Use forcing_order_matrix_from_acf_entry_simple(...) or "
+        "forcing_order_matrix_from_acf_entry_looped(..., looped_vertices=...)."
+    )
+
+
+def load_all():
+    """
+    Return public API callables.
+    """
+    return {
+        # Simple API
+        "simple_zero_forcing_closure": simple_zero_forcing_closure,
+        "is_simple_zero_forcing_set": is_simple_zero_forcing_set,
+        "simple_zero_forcing_number": simple_zero_forcing_number,
+        "simple_forcing_paths": simple_forcing_paths,
+        "all_chronological_forces_simple": all_chronological_forces_simple,
+        "forcing_order_matrix_simple": forcing_order_matrix_simple,
+        "forcing_order_matrix_from_acf_entry_simple": forcing_order_matrix_from_acf_entry_simple,
+        "reversal_reconfiguration_graph_simple": reversal_reconfiguration_graph_simple,
+        "szf": szf,
+
+        # Looped API
+        "looped_zero_forcing_closure": looped_zero_forcing_closure,
+        "is_looped_zero_forcing_set": is_looped_zero_forcing_set,
+        "looped_zero_forcing_number": looped_zero_forcing_number,
+        "maximum_looped_zero_forcing_number": maximum_looped_zero_forcing_number,
+        "looped_forcing_paths": looped_forcing_paths,
+        "all_chronological_forces_looped": all_chronological_forces_looped,
+        "forcing_order_matrix_looped": forcing_order_matrix_looped,
+        "forcing_order_matrix_from_acf_entry_looped": forcing_order_matrix_from_acf_entry_looped,
+        "reversal_reconfiguration_graph_looped": reversal_reconfiguration_graph_looped,
+        "lzf": lzf,
+        "EZ": EZ,
+
+        # Deprecated wrappers / compatibility
+        "zero_forcing_paths": zero_forcing_paths,
+        "all_chronological_forces": all_chronological_forces,
+        "acf": acf,
+        "forcing_order_matrix": forcing_order_matrix,
+        "forcing_order_matrix_from_acf_entry": forcing_order_matrix_from_acf_entry,
+
+        "load_all": load_all,
+    }
