@@ -22,8 +22,16 @@ looped_zero_forcing_closure(g, initial_set, looped_vertices=None)
 is_looped_zero_forcing_set(g, initial_set, looped_vertices=None)
     Test whether an initial set is looped zero forcing.
 
+maximum_looped_zero_forcing_number(
+    g, return_configurations=False, return_sets=False
+)
+    Compute max over all loop configurations of the looped zero forcing number.
+
 lzf(g, looped_vertices=None, return_sets=False)
     Short alias for looped_zero_forcing_number.
+
+EZ(g, return_configurations=False, return_sets=False)
+    Short alias for maximum_looped_zero_forcing_number.
 
 load_all()
     Return a dict mapping every public name in this module to its callable.
@@ -296,10 +304,107 @@ def looped_zero_forcing_number(g, looped_vertices=None, return_sets=False):
     return lz, sorted(sets, key=lambda s: sorted(s))
 
 
+def maximum_looped_zero_forcing_number(
+    g, return_configurations=False, return_sets=False
+):
+    """
+    Compute the maximum looped zero forcing number over all loop configurations.
+
+    This computes
+        max_{L subseteq V(G)} lZ(G, L),
+    where lZ(G, L) is the looped zero forcing number for loop set L.
+
+    Parameters
+    ----------
+    g : graph
+        A graph in any supported format (SageMath graph preferred).
+    return_configurations : bool, optional
+        If True, also return all loop configurations attaining the maximum.
+    return_sets : bool, optional
+        If True, also return all minimum looped zero forcing sets for each
+        maximizing loop configuration.
+
+    Returns
+    -------
+    int
+        The maximum looped zero forcing number.
+    tuple
+        If ``return_configurations=True`` and ``return_sets=False``:
+            ``(max_lz, loop_configs)``
+        where ``loop_configs`` is a sorted list of frozensets of vertices.
+
+        If ``return_sets=True`` (with or without ``return_configurations``):
+            ``(max_lz, data)``
+        where ``data`` is a sorted list of pairs
+            ``(loop_config, min_sets)``
+        with ``loop_config`` a frozenset of looped vertices and ``min_sets``
+        the sorted list of all minimum looped zero forcing sets for that
+        configuration.
+    """
+    vertices, adj_mask, n = _adjacency_lists(g)
+
+    if n == 0:
+        if return_sets:
+            return 0, [(frozenset(), [frozenset()])]
+        if return_configurations:
+            return 0, [frozenset()]
+        return 0
+
+    full_mask = (1 << n) - 1
+
+    max_lz = -1
+    maximizing_configs = []
+    maximizing_data = []
+
+    # Enumerate all loop configurations as bitmasks from 0..2^n-1
+    for loop_mask in range(1 << n):
+        lz = _looped_zero_forcing_number_internal(adj_mask, loop_mask, n, full_mask)
+
+        if lz > max_lz:
+            max_lz = lz
+            maximizing_configs = [loop_mask]
+            maximizing_data = []
+        elif lz == max_lz:
+            maximizing_configs.append(loop_mask)
+
+    # If only numeric value requested
+    if not return_configurations and not return_sets:
+        return max_lz
+
+    def mask_to_vertex_set(mask):
+        return frozenset(vertices[i] for i in range(n) if (mask >> i) & 1)
+
+    # If only configurations requested
+    if return_configurations and not return_sets:
+        cfgs = [mask_to_vertex_set(m) for m in maximizing_configs]
+        return max_lz, sorted(cfgs, key=lambda s: sorted(s))
+
+    # return_sets=True: include all min sets for each maximizing configuration
+    for m in maximizing_configs:
+        _, sets = looped_zero_forcing_number(
+            g,
+            looped_vertices=mask_to_vertex_set(m),
+            return_sets=True,
+        )
+        maximizing_data.append((mask_to_vertex_set(m), sets))
+
+    maximizing_data = sorted(maximizing_data, key=lambda pair: sorted(pair[0]))
+    return max_lz, maximizing_data
+
+
 def lzf(g, looped_vertices=None, return_sets=False):
     """Short alias for :func:`looped_zero_forcing_number`."""
     return looped_zero_forcing_number(
         g, looped_vertices=looped_vertices, return_sets=return_sets
+    )
+
+
+def EZ(g, return_configurations=False, return_sets=False):
+    """Short alias for :func:`maximum_looped_zero_forcing_number`."""
+    return maximum_looped_zero_forcing_number(
+        g,
+        return_configurations=return_configurations,
+        return_sets=return_sets,
     )
 
 
@@ -316,6 +421,8 @@ def load_all():
         "looped_zero_forcing_number": looped_zero_forcing_number,
         "looped_zero_forcing_closure": looped_zero_forcing_closure,
         "is_looped_zero_forcing_set": is_looped_zero_forcing_set,
+        "maximum_looped_zero_forcing_number": maximum_looped_zero_forcing_number,
         "lzf": lzf,
+        "EZ": EZ,
         "load_all": load_all,
     }
