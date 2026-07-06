@@ -667,3 +667,204 @@ def load_all():
         "EZ": EZ,
         "load_all": load_all,
     }
+
+
+# ---------------------------------------------------------------------------
+# Chronological forcing sequences (all possible)
+# ---------------------------------------------------------------------------
+def _possible_forces_looped(adj_mask, blue_mask, loop_mask, n):
+    """
+    Return all possible looped-rule forces (u,v) from current state.
+    Looped rule: any u (blue or white) may force if it has exactly one white
+    neighbor in the looped graph.
+    """
+    blue_mask = int(blue_mask)
+    loop_mask = int(loop_mask)
+    out = []
+    for u in range(int(n)):
+        nbrs = int(adj_mask[u])
+        if (loop_mask >> u) & 1:
+            nbrs |= (1 << u)
+        white_nbrs = nbrs & ~blue_mask
+        if white_nbrs and not (white_nbrs & (white_nbrs - 1)):
+            v = _single_bit_index(white_nbrs)
+            out.append((int(u), int(v)))
+    out.sort()
+    return out
+
+
+def _all_chronological_force_lists_indices(adj_mask, initial_mask, n, rule="simple", loop_mask=0):
+    """
+    Enumerate all possible chronological lists of forces.
+
+    Parameters
+    ----------
+    rule : {"simple","looped","looped_noloops"}
+        simple         : only blue vertices can force.
+        looped         : any vertex can force; use provided loop_mask.
+        looped_noloops : any vertex can force; loop_mask forced to 0.
+    """
+    n = int(n)
+    initial_mask = int(initial_mask)
+    full_mask = int((1 << n) - 1)
+    loop_mask = int(loop_mask)
+
+    if rule not in ("simple", "looped", "looped_noloops"):
+        raise ValueError("rule must be one of: 'simple', 'looped', 'looped_noloops'")
+
+    if rule == "looped_noloops":
+        loop_mask = 0
+
+    memo = {}
+
+    def rec(blue_mask):
+        blue_mask = int(blue_mask)
+        if blue_mask == full_mask:
+            return [tuple()]
+
+        if blue_mask in memo:
+            return memo[blue_mask]
+
+        if rule == "simple":
+            candidates = _possible_forces_regular(adj_mask, blue_mask, n)
+        else:
+            candidates = _possible_forces_looped(adj_mask, blue_mask, loop_mask, n)
+
+        if not candidates:
+            memo[blue_mask] = []
+            return memo[blue_mask]
+
+        all_seqs = []
+        for (u, v) in candidates:
+            if (blue_mask >> v) & 1:
+                continue
+            next_mask = int(blue_mask | (1 << v))
+            tails = rec(next_mask)
+            for t in tails:
+                all_seqs.append(((u, v),) + t)
+
+        memo[blue_mask] = all_seqs
+        return all_seqs
+
+    return rec(initial_mask)
+
+
+def all_chronological_forces(
+    g,
+    initial_set,
+    looped_vertices=None,
+    rule=None,
+    return_vertex_orders=False,
+):
+    """
+    Output all possible chronological force lists.
+
+    Toggle rule behavior with `rule`:
+      - rule="simple": simple-graph interpretation (white forcing not allowed).
+      - rule="looped": looped-rule interpretation (white forcing allowed), using
+        `looped_vertices` as loops (default if looped_vertices is provided).
+      - rule="looped_noloops": looped-rule interpretation with no loops, i.e.
+        white forces allowed on the underlying simple graph.
+
+    Backward compatibility:
+      - If rule is None:
+          * uses "looped" when looped_vertices is not None
+          * uses "simple" when looped_vertices is None
+    """
+    vertices, adj_mask, n = _adjacency_lists(g)
+    idx = {v: i for i, v in enumerate(vertices)}
+    initial_mask = _bitmask_from_vertices(vertices, initial_set)
+    full_mask = int((1 << n) - 1)
+
+    # Backward-compatible default
+    if rule is None:
+        rule = "looped" if looped_vertices is not None else "simple"
+
+    if rule not in ("simple", "looped", "looped_noloops"):
+        raise ValueError("rule must be one of: 'simple', 'looped', 'looped_noloops'")
+
+    if rule == "simple":
+        if _zf_closure(adj_mask, initial_mask, n) != full_mask:
+            raise ValueError("initial_set is not a zero forcing set (simple rule)")
+        seqs_idx = _all_chronological_force_lists_indices(
+            adj_mask, initial_mask, n, rule="simple", loop_mask=0
+        )
+
+    elif rule == "looped_noloops":
+        # looped rule with zero loops
+        if _lzf_closure(adj_mask, initial_mask, 0, n) != full_mask:
+            raise ValueError("initial_set is not a zero forcing set (looped rule, no loops)")
+        seqs_idx = _all_chronological_force_lists_indices(
+            adj_mask, initial_mask, n, rule="looped_noloops", loop_mask=0
+        )
+
+    else:  # rule == "looped"
+        loop_mask = _loop_mask_from_vertices(vertices, looped_vertices)
+        if _lzf_closure(adj_mask, initial_mask, loop_mask, n) != full_mask:
+            raise ValueError("initial_set is not a zero forcing set (looped rule)")
+        seqs_idx = _all_chronological_force_lists_indices(
+            adj_mask, initial_mask, n, rule="looped", loop_mask=loop_mask
+        )
+
+    seqs = [tuple((vertices[u], vertices[v]) for (u, v) in seq) for seq in seqs_idx]
+
+    if not return_vertex_orders:
+        return seqs
+
+    results = []
+    all_vertices = list(vertices)
+
+    for seq in seqs:
+        seen_forcer = set()
+        forcer_order = []
+        forced_order = []
+
+        for (u, v) in seq:
+            if u not in seen_forcer:
+                seen_forcer.add(u)
+                forcer_order.append(u)
+            forced_order.append(v)
+
+        nonforcers = [v for v in all_vertices if v not in seen_forcer]
+        forcer_with_nonforcers = tuple(forcer_order + nonforcers)
+
+        init_blues_ordered = [v for v in all_vertices if (initial_mask >> idx[v]) & 1]
+        forced_plus_initial = tuple(forced_order + init_blues_ordered)
+
+        results.append((seq, forcer_with_nonforcers, forced_plus_initial))
+
+    return results
+    
+def _single_bit_index(x):
+    """Return index of single-bit positive int x."""
+    return int(x.bit_length() - 1)
+
+
+def _possible_forces_regular(adj_mask, blue_mask, n):
+    """
+    Return all possible regular forces (u,v) from current state.
+    Regular rule: blue u with exactly one white neighbor v.
+    """
+    blue_mask = int(blue_mask)
+    out = []
+    for u in range(int(n)):
+        if (blue_mask >> u) & 1:
+            white_nbrs = int(adj_mask[u]) & ~blue_mask
+            if white_nbrs and not (white_nbrs & (white_nbrs - 1)):
+                v = _single_bit_index(white_nbrs)
+                out.append((int(u), int(v)))
+    out.sort()
+    return out
+
+
+
+# Optional short alias
+def acf(g, initial_set, looped_vertices=None, rule=None, return_vertex_orders=False):
+    return all_chronological_forces(
+        g,
+        initial_set,
+        looped_vertices=looped_vertices,
+        rule=rule,
+        return_vertex_orders=return_vertex_orders,
+    )
+  
