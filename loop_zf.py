@@ -868,3 +868,113 @@ def acf(g, initial_set, looped_vertices=None, rule=None, return_vertex_orders=Fa
         return_vertex_orders=return_vertex_orders,
     )
   
+def forcing_order_matrix(
+    g,
+    force_order,
+    looped_vertices=None,
+    include_idle_vertices=True,
+):
+    """
+    Build reordered matrix A from graph G and a chosen force chronology.
+
+    Steps:
+    1) Start with A = adjacency_matrix(G) + 2*I.
+    2) If looped_vertices is provided, then for each looped vertex v set A[v,v]=3
+       (before reordering).
+    3) Reorder rows by forcer order (chronological first appearance in force_order).
+       If include_idle_vertices=True, append vertices that never force in the
+       remaining graph order.
+    4) Reorder columns by forced order (chronological targets in force_order).
+       If include_idle_vertices=True, append initial blue vertices (those never
+       forced) in remaining graph order.
+
+    Parameters
+    ----------
+    g : Sage graph (or graph supported by this module's _adjacency_lists)
+    force_order : iterable of pairs (u,v)
+        One chronological forcing list.
+    looped_vertices : iterable or None
+        Vertices with loops (diagonal set to 3).
+    include_idle_vertices : bool
+        If True, returns a full n x n reordered matrix by appending remaining
+        vertices as described above.
+
+    Returns
+    -------
+    (A_reordered, row_order, col_order)
+        A_reordered : Sage matrix if matrix constructor is available, else list of lists
+        row_order   : tuple of vertex labels used for row permutation
+        col_order   : tuple of vertex labels used for col permutation
+    """
+    vertices, adj_mask, n = _adjacency_lists(g)
+    n = int(n)
+
+    # Build dense adjacency in vertex order used by this module
+    idx = {v: i for i, v in enumerate(vertices)}
+    M = [[0] * n for _ in range(n)]
+    for i in range(n):
+        m = int(adj_mask[i])
+        for j in range(n):
+            if (m >> j) & 1:
+                M[i][j] = 1
+
+    # A = adjacency + 2I
+    for i in range(n):
+        M[i][i] += 2
+
+    # Looped diagonal override to 3 (before reorder)
+    if looped_vertices is not None:
+        for v in looped_vertices:
+            if v not in idx:
+                raise ValueError("looped vertex {!r} is not in graph".format(v))
+            i = idx[v]
+            M[i][i] = 3
+
+    # Normalize/validate force order
+    force_order = list(force_order)
+    for pair in force_order:
+        if not (isinstance(pair, (tuple, list)) and len(pair) == 2):
+            raise ValueError("force_order must contain pairs (u,v)")
+        u, v = pair
+        if u not in idx or v not in idx:
+            raise ValueError("force pair ({!r},{!r}) uses vertex not in graph".format(u, v))
+
+    # Row order = vertices that perform a force (first appearance)
+    seen_forcer = set()
+    row_order = []
+    for (u, _) in force_order:
+        if u not in seen_forcer:
+            seen_forcer.add(u)
+            row_order.append(u)
+
+    # Col order = vertices as they are forced (chronological targets)
+    col_order = [v for (_, v) in force_order]
+
+    if include_idle_vertices:
+        # append vertices that never force
+        row_order += [v for v in vertices if v not in seen_forcer]
+
+        # initial blue vertices = never forced
+        forced_set = set(col_order)
+        initial_blues = [v for v in vertices if v not in forced_set]
+        col_order += initial_blues
+
+    # For full matrix mode, row/col orders must each have size n
+    if len(row_order) != n or len(col_order) != n:
+        raise ValueError(
+            "row/col order lengths are ({}, {}), expected ({}, {}). "
+            "Use include_idle_vertices=True for full n x n matrix.".format(
+                len(row_order), len(col_order), n, n
+            )
+        )
+
+    # Apply permutations
+    row_idx = [idx[v] for v in row_order]
+    col_idx = [idx[v] for v in col_order]
+    R = [[M[i][j] for j in col_idx] for i in row_idx]
+
+    # Return Sage matrix if available
+    try:
+        return matrix(R), tuple(row_order), tuple(col_order)
+    except Exception:
+        return R, tuple(row_order), tuple(col_order)
