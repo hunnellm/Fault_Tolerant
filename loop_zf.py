@@ -688,6 +688,60 @@ def reversal_reconfiguration_graph_looped(g, looped_vertices, return_classes=Fal
     class_list = sorted(class_list, key=lambda cls: [sorted(s) for s in cls])
     return RG, class_list
 
+def reversal_map_simple(g):
+    """
+    Return a sorted list of (B, R(B)) over minimum simple zero forcing sets.
+    R(B) is computed as sinks of the forcing digraph from _simple_forcing_record.
+    """
+    _, min_sets = _minimum_simple_zero_forcing_sets(g)
+    vertices, adj_mask, n = _adjacency_lists(g)
+
+    out = []
+    for B in min_sets:
+        B = frozenset(B)
+        initial_mask = _bitmask_from_vertices(vertices, B)
+        full_forced, _parent, force_edges = _simple_forcing_record(adj_mask, initial_mask, n)
+        if not full_forced:
+            continue
+
+        outdeg = {v: 0 for v in vertices}
+        for (u_idx, _v_idx) in force_edges:
+            outdeg[vertices[u_idx]] += 1
+
+        RB = frozenset(v for v in vertices if outdeg[v] == 0)
+        out.append((B, RB))
+
+    return sorted(out, key=lambda t: (sorted(t[0]), sorted(t[1])))
+
+
+def reversal_map_looped(g, looped_vertices):
+    """
+    Return a sorted list of (B, R(B)) over minimum looped zero forcing sets
+    for the fixed loop configuration looped_vertices.
+    """
+    _, min_sets = looped_zero_forcing_number(g, looped_vertices=looped_vertices, return_sets=True)
+    vertices, adj_mask, n = _adjacency_lists(g)
+    loop_mask = _loop_mask_from_vertices(vertices, looped_vertices)
+
+    out = []
+    for B in min_sets:
+        B = frozenset(B)
+        initial_mask = _bitmask_from_vertices(vertices, B)
+        full_forced, _parent, force_edges = _looped_forcing_record(
+            adj_mask, initial_mask, loop_mask, n
+        )
+        if not full_forced:
+            continue
+
+        outdeg = {v: 0 for v in vertices}
+        for (u_idx, _v_idx) in force_edges:
+            outdeg[vertices[u_idx]] += 1
+
+        RB = frozenset(v for v in vertices if outdeg[v] == 0)
+        out.append((B, RB))
+
+    return sorted(out, key=lambda t: (sorted(t[0]), sorted(t[1])))
+
 # ---------------------------------------------------------------------------
 # Chronological force lists (all possible)
 # ---------------------------------------------------------------------------
