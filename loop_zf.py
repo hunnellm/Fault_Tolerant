@@ -1204,6 +1204,64 @@ Fort Calculations
 
 _______________________________________________
 """
+def loop_forts(g, looped_vertices, include_empty=True, include_full=True):
+    """
+    Return all loop forts for a fixed loop configuration.
+
+    A loop fort S satisfies:
+      for every vertex v in V(G_looped), |N(v) ∩ S| != 1,
+    where G_looped has loops exactly on looped_vertices, and a loop at v means
+    v is included in N(v).
+
+    Parameters
+    ----------
+    g : graph-like
+    looped_vertices : iterable
+        Vertices that carry loops in the looped graph.
+    include_empty : bool
+        Whether to include the empty fort.
+    include_full : bool
+        Whether to include V(G) when it is a fort.
+    """
+    vertices, adj_mask, n = _adjacency_lists(g)
+    loop_mask = _loop_mask_from_vertices(vertices, looped_vertices)
+    n = int(n)
+
+    if n == 0:
+        return [frozenset()] if include_empty else []
+
+    # Closed-neighborhood masks in the chosen loop configuration.
+    nbr_masks = [0] * n
+    for v in range(n):
+        m = int(adj_mask[v])
+        if (loop_mask >> v) & 1:
+            m |= (1 << v)
+        nbr_masks[v] = int(m)
+
+    def is_loop_fort(mask):
+        mask = int(mask)
+        for v in range(n):
+            c = int((nbr_masks[v] & mask).bit_count())
+            if c == 1:
+                return False
+        return True
+
+    forts = []
+    full_mask = int((1 << n) - 1)
+
+    for mask in range(1 << n):
+        mask = int(mask)
+
+        if not include_empty and mask == 0:
+            continue
+        if not include_full and mask == full_mask:
+            continue
+
+        if is_loop_fort(mask):
+            forts.append(frozenset(vertices[i] for i in range(n) if (mask >> i) & 1))
+
+    return sorted(forts, key=lambda s: (len(s), sorted(s)))
+
 def loop_blocking_number(g, looped_vertices, return_sets=False):
     """
     Compute the minimum size of a loop blocking set for a fixed loop configuration.
