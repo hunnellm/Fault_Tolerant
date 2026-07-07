@@ -1433,3 +1433,21 @@ def all_loop_configurations(g, return_vertex_sets=False):
     if return_vertex_sets:
         return [(H, S) for (S, H) in data]
     return [H for (_S, H) in data]
+
+def all_loop_vertex_sets(g):
+    """
+    Return all loop configurations of g as vertex sets.
+
+    Output is a deterministically ordered list of frozensets S ⊆ V(g),
+    where S is interpreted as the set of looped vertices.
+    """
+    vertices, _adj_mask, n = _adjacency_lists(g)
+    n = int(n)
+
+    out = []
+    for mask in range(1 << n):
+        mask = int(mask)
+        S = frozenset(vertices[i] for i in range(n) if (mask >> i) & 1)
+        out.append(S)
+
+    return sorted(out, key=lambda s: (len(s), sorted(s)))
