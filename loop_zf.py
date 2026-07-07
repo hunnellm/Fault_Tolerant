@@ -622,80 +622,82 @@ def reversal_reconfiguration_graph_simple(g, return_classes=False):
     class_list = sorted(class_list, key=lambda cls: [sorted(s) for s in cls])
     return RG, class_list
 
+def _all_reversals_for_looped_set(g, B, looped_vertices):
+    """
+    Return all reversal sets R obtainable from B over all chronological force lists.
+    LOOPED setting for fixed looped_vertices.
+    """
+    vertices, adj_mask, n = _adjacency_lists(g)
+    initial_mask = _bitmask_from_vertices(vertices, B)
+    loop_mask = _loop_mask_from_vertices(vertices, looped_vertices)
+    full_mask = (1 << n) - 1
+
+    if _lzf_closure(adj_mask, initial_mask, loop_mask, n) != full_mask:
+        return set()
+
+    seqs = _all_chronological_force_lists_looped_indices(adj_mask, initial_mask, loop_mask, n)
+    revs = set()
+
+    for seq in seqs:
+        outdeg = [0] * n
+        for (u, v) in seq:
+            outdeg[u] += 1
+        R = frozenset(vertices[i] for i in range(n) if outdeg[i] == 0)
+        revs.add(R)
+
+    return revs
+
+
 def reversal_reconfiguration_graph_looped(g, looped_vertices, return_classes=False):
     """
-    Build the LOOPED reversal reconfiguration graph using true digraph reversal.
-
-    For each minimum looped ZF set B (for fixed looped_vertices):
-      - compute one deterministic forcing digraph D_B from _looped_forcing_record
-      - let R(B) be the sinks of D_B (vertices with out-degree 0 in D_B)
-      - add an undirected edge {B, R(B)} when R(B) is also a minimum set
+    Edge B--R iff R is an achievable reversal of B from some valid chronology.
+    LOOPED setting for fixed looped_vertices.
     """
     _, min_sets = looped_zero_forcing_number(g, looped_vertices=looped_vertices, return_sets=True)
     min_sets = [frozenset(S) for S in min_sets]
-    min_set_lookup = set(min_sets)
+    min_lookup = set(min_sets)
 
-    vertices, adj_mask, n = _adjacency_lists(g)
-    loop_mask = _loop_mask_from_vertices(vertices, looped_vertices)
-
-    # R-map: B -> R(B)
-    rev_map = {}
-
+    rev_multi = {}
     for B in min_sets:
-        initial_mask = _bitmask_from_vertices(vertices, B)
-        full_forced, _parent, force_edges = _looped_forcing_record(
-            adj_mask, initial_mask, loop_mask, n
-        )
-        if not full_forced:
-            # Defensive: should not happen for min sets
-            continue
+        all_rev = _all_reversals_for_looped_set(g, B, looped_vertices)
+        rev_multi[B] = {R for R in all_rev if R in min_lookup}
 
-        # out-degree in forcing digraph D_B
-        outdeg = {v: 0 for v in vertices}
-        for (u_idx, v_idx) in force_edges:
-            u = vertices[u_idx]
-            outdeg[u] += 1
-
-        RB = frozenset(v for v in vertices if outdeg[v] == 0)
-        rev_map[B] = RB
-
-    # Build undirected edge set from actual reversals
     edges_set = set()
-    for B, RB in rev_map.items():
-        if RB in min_set_lookup and RB != B:
-            e = tuple(sorted((B, RB), key=lambda s: sorted(s)))
-            edges_set.add(e)
+    for B in min_sets:
+        for R in rev_multi[B]:
+            if R != B:
+                e = tuple(sorted((B, R), key=lambda s: sorted(s)))
+                edges_set.add(e)
 
-    verts = list(min_sets)
-    edges = list(edges_set)
-    RG = _make_graph(verts, edges)
+    RG = _make_graph(min_sets, list(edges_set))
 
     if not return_classes:
         return RG
 
-    # Return 2-cycles/singletons induced by reversal map on minimum sets
-    seen = set()
-    class_list = []
-    for B in sorted(min_sets, key=lambda s: sorted(s)):
-        if B in seen:
-            continue
-        RB = rev_map.get(B, None)
-        if RB in min_set_lookup:
-            if RB == B:
-                cls = [B]
-                seen.add(B)
-            else:
-                cls = sorted([B, RB], key=lambda s: sorted(s))
-                seen.add(B)
-                seen.add(RB)
-        else:
-            cls = [B]
-            seen.add(B)
-        class_list.append(cls)
+    try:
+        comps = RG.connected_components()
+        class_list = [sorted(list(c), key=lambda s: sorted(s)) for c in comps]
+    except Exception:
+        seen = set()
+        class_list = []
+        adj = RG
+        for v in sorted(adj.keys(), key=lambda s: sorted(s)):
+            if v in seen:
+                continue
+            stack = [v]
+            comp = []
+            seen.add(v)
+            while stack:
+                x = stack.pop()
+                comp.append(x)
+                for y in adj[x]:
+                    if y not in seen:
+                        seen.add(y)
+                        stack.append(y)
+            class_list.append(sorted(comp, key=lambda s: sorted(s)))
 
     class_list = sorted(class_list, key=lambda cls: [sorted(s) for s in cls])
     return RG, class_list
-
 def reversal_map_simple(g):
     """
     Return a sorted list of (B, R(B)) over minimum simple zero forcing sets.
