@@ -1262,6 +1262,53 @@ def loop_forts(g, looped_vertices, include_empty=False, include_full=True):
 
     return sorted(forts, key=lambda s: (len(s), sorted(s)))
 
+def is_loop_fort(g, fort_set, looped_vertices):
+    """
+    Decide whether fort_set is a loop fort for a fixed loop configuration.
+
+    S is a loop fort iff for every vertex v in V(G_looped),
+      |N(v) ∩ S| != 1,
+    where loops are present exactly on looped_vertices.
+    """
+    vertices, adj_mask, n = _adjacency_lists(g)
+    mask = _bitmask_from_vertices(vertices, fort_set)
+    loop_mask = _loop_mask_from_vertices(vertices, looped_vertices)
+    n = int(n)
+
+    for v in range(n):
+        nbrs = int(adj_mask[v])
+        if (loop_mask >> v) & 1:
+            nbrs |= (1 << v)
+        if int((nbrs & mask).bit_count()) == 1:
+            return False
+    return True
+
+
+def minimal_loop_forts(g, looped_vertices, include_empty=False):
+    """
+    Return all inclusion-minimal loop forts for a fixed loop configuration.
+
+    By default, excludes the empty set (set include_empty=True to allow it).
+    """
+    forts = loop_forts(
+        g,
+        looped_vertices=looped_vertices,
+        include_empty=include_empty,
+        include_full=True,
+    )
+
+    minimal = []
+    for S in forts:
+        is_minimal = True
+        for T in forts:
+            if T != S and T.issubset(S):
+                is_minimal = False
+                break
+        if is_minimal:
+            minimal.append(S)
+
+    return sorted(minimal, key=lambda s: (len(s), sorted(s)))
+
 def loop_blocking_number(g, looped_vertices, return_sets=False):
     """
     Compute the minimum size of a loop blocking set for a fixed loop configuration.
