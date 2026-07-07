@@ -1204,7 +1204,7 @@ Fort Calculations
 
 _______________________________________________
 """
-def loop_forts(g, looped_vertices, include_empty=True, include_full=True):
+def loop_forts(g, looped_vertices, include_empty=False, include_full=True):
     """
     Return all loop forts for a fixed loop configuration.
 
