@@ -1197,3 +1197,100 @@ def load_all():
 
         "load_all": load_all,
     }
+
+"""
+_______________________________________________
+Fort Calculations
+
+_______________________________________________
+"""
+def loop_blocking_number(g, looped_vertices, return_sets=False):
+    """
+    Compute the minimum size of a loop blocking set for a fixed loop configuration.
+
+    A loop blocking set S satisfies:
+      for every vertex u in G (with loops added exactly on looped_vertices),
+      u has at least two neighbors in S.
+
+    Here, a loop at u contributes u itself as a neighbor when u in S.
+    """
+    vertices, adj_mask, n = _adjacency_lists(g)
+
+    if n == 0:
+        if return_sets:
+            return 0, [frozenset()]
+        return 0
+
+    loop_mask = _loop_mask_from_vertices(vertices, looped_vertices)
+
+    # For each vertex u, build the candidate-neighbor bitmask in the looped graph.
+    nbr_masks = [0] * n
+    for u in range(n):
+        m = int(adj_mask[u])
+        if (loop_mask >> u) & 1:
+            m |= (1 << u)
+        nbr_masks[u] = int(m)
+
+    def is_loop_blocking(mask):
+        mask = int(mask)
+        for u in range(n):
+            c = int((nbr_masks[u] & mask).bit_count())
+            if c < 2:
+                return False
+        return True
+
+    best_size = None
+    best_sets = []
+
+    for size in range(0, n + 1):
+        found_any = False
+        for combo in combinations(range(n), size):
+            mask = 0
+            for v in combo:
+                mask |= (1 << int(v))
+            mask = int(mask)
+
+            if is_loop_blocking(mask):
+                found_any = True
+                if not return_sets:
+                    return int(size)
+                best_sets.append(frozenset(vertices[v] for v in combo))
+
+        if found_any:
+            best_size = int(size)
+            break
+
+    # If no set exists (possible for sparse/small graphs), return n and optionally [].
+    if best_size is None:
+        if return_sets:
+            return int(n), []
+        return int(n)
+
+    return int(best_size), sorted(best_sets, key=lambda s: sorted(s))
+
+def loop_blocking_sets(g, looped_vertices, return_sets=False):
+    return loop_blocking_number(g, looped_vertices, return_sets=True)
+
+def all_loop_configurations(g, return_masks=False):
+    """
+    Return all possible loop configurations of G.
+
+    A loop configuration is any subset of vertices designated as looped.
+    Returns configurations as frozensets of vertices, sorted deterministically.
+
+    If return_masks=True, also return the corresponding integer bitmasks.
+    """
+    vertices, _adj_mask, n = _adjacency_lists(g)
+    n = int(n)
+
+    cfgs = []
+    for m in range(1 << n):
+        m = int(m)
+        cfg = frozenset(vertices[i] for i in range(n) if (m >> i) & 1)
+        cfgs.append((m, cfg))
+
+    cfgs = sorted(cfgs, key=lambda t: sorted(t[1]))
+
+    if return_masks:
+        return cfgs
+    return [cfg for (_m, cfg) in cfgs]
