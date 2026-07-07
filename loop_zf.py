@@ -1376,26 +1376,60 @@ def loop_blocking_number(g, looped_vertices, return_sets=False):
 def loop_blocking_sets(g, looped_vertices, return_sets=False):
     return loop_blocking_number(g, looped_vertices, return_sets=True)
 
-def all_loop_configurations(g, return_masks=False):
+def all_loop_configurations(g, return_vertex_sets=False):
     """
-    Return all possible loop configurations of G.
+    Return all loop configurations of g as graph objects.
 
-    A loop configuration is any subset of vertices designated as looped.
-    Returns configurations as frozensets of vertices, sorted deterministically.
+    Each configuration is obtained by adding loops on a subset S of V(g).
+    The output is sorted deterministically by S (as sorted vertex list).
 
-    If return_masks=True, also return the corresponding integer bitmasks.
+    If return_vertex_sets=True, return pairs (H, S) where:
+      - H is the looped graph object
+      - S is the frozenset of looped vertices used to build H
     """
     vertices, _adj_mask, n = _adjacency_lists(g)
     n = int(n)
 
-    cfgs = []
-    for m in range(1 << n):
-        m = int(m)
-        cfg = frozenset(vertices[i] for i in range(n) if (m >> i) & 1)
-        cfgs.append((m, cfg))
+    def _make_looped_graph(base_graph, looped_set):
+        # Try Sage-style copy/add_edge(v,v)
+        try:
+            H = base_graph.copy()
+            for v in looped_set:
+                H.add_edge(v, v)
+            return H
+        except Exception:
+            pass
 
-    cfgs = sorted(cfgs, key=lambda t: sorted(t[1]))
+        # Try NetworkX-style copy/add_edge(v,v)
+        try:
+            H = base_graph.copy()
+            for v in looped_set:
+                H.add_edge(v, v)
+            return H
+        except Exception:
+            pass
 
-    if return_masks:
-        return cfgs
-    return [cfg for (_m, cfg) in cfgs]
+        # Fallback: adjacency-dict graph representation with explicit loops
+        verts, adj_mask_local, n_local = _adjacency_lists(base_graph)
+        adj = {v: set() for v in verts}
+        for i, u in enumerate(verts):
+            m = int(adj_mask_local[i])
+            for j, v in enumerate(verts):
+                if (m >> j) & 1:
+                    adj[u].add(v)
+        for v in looped_set:
+            adj[v].add(v)
+        return {v: sorted(adj[v]) for v in sorted(adj)}
+
+    data = []
+    for mask in range(1 << n):
+        mask = int(mask)
+        S = frozenset(vertices[i] for i in range(n) if (mask >> i) & 1)
+        H = _make_looped_graph(g, S)
+        data.append((S, H))
+
+    data = sorted(data, key=lambda t: sorted(t[0]))
+
+    if return_vertex_sets:
+        return [(H, S) for (S, H) in data]
+    return [H for (_S, H) in data]
